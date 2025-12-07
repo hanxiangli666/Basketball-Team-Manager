@@ -3,21 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Drew Rangers Tracker Pro v18</title>
+    <title>Drew Rangers Tracker Pro v20</title>
     <link rel="icon" href="icon.png" type="image/png">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        /* 全局设置 */
         body { 
             overflow: hidden; 
             touch-action: manipulation;
             font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
 
-        /* 登陆页背景 */
         #landing-bg {
             background: url('Background.jpg') no-repeat center center;
             background-size: cover;
@@ -30,7 +28,6 @@
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-        /* 比赛模式卡片 */
         .player-card {
             transition: all 0.3s ease-in-out;
             touch-action: manipulation;
@@ -59,17 +56,16 @@
             background-color: #f3f4f6; color: #4b5563;
             padding: 8px 12px; font-weight: 800; font-size: 0.9rem; letter-spacing: 0.05em;
             border-bottom: 1px solid #e5e7eb;
+            display: flex; justify-content: space-between; align-items: center;
         }
 
         .photo-frame { aspect-ratio: 3 / 4; overflow: hidden; background-color: #e5e7eb; }
         .photo-img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
 
-        /* 滚动条美化 */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 
-        /* 疲劳特效 */
         @keyframes pulse-yellow { 0%, 100% { box-shadow: inset 0 0 0 0 rgba(0,0,0,0); border-color: #57a51d; } 50% { box-shadow: inset 0 0 20px rgba(250, 204, 21, 0.8); border-color: #facc15; } }
         @keyframes pulse-orange { 0%, 100% { box-shadow: inset 0 0 0 0 rgba(0,0,0,0); border-color: #57a51d; } 50% { box-shadow: inset 0 0 30px rgba(249, 115, 22, 0.9); border-color: #f97316; } }
         @keyframes pulse-red { 0%, 100% { box-shadow: inset 0 0 0 0 rgba(0,0,0,0); border-color: #57a51d; } 50% { box-shadow: inset 0 0 40px rgba(239, 68, 68, 1); border-color: #ef4444; } }
@@ -139,9 +135,7 @@
             <div id="practiceGrid" class="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 content-start pb-2"></div>
             <div class="h-48 bg-white p-2 rounded-xl shadow-sm border border-gray-200 shrink-0 flex flex-col">
                 <div class="flex justify-between items-center mb-1">
-                    <h3 class="font-bold text-gray-800 text-[10px] uppercase flex items-center gap-2">
-                        Stats Leaderboard
-                    </h3>
+                    <h3 class="font-bold text-gray-800 text-[10px] uppercase flex items-center gap-2">Stats Leaderboard</h3>
                     <span id="chartTitle" class="text-[9px] font-black text-green-600 bg-green-50 px-2 py-0.5 rounded">TOTAL SCORE</span>
                 </div>
                 <div class="flex gap-1 overflow-x-auto pb-1 mb-1 scrollbar-hide" id="chart-tabs"></div>
@@ -153,8 +147,9 @@
     </div>
 
 
-    <div id="game-view" class="hidden w-full h-full flex flex-col z-40">
-        <div class="shrink-0 z-50 shadow-xl relative">
+    <div id="game-view" class="hidden w-full h-full flex flex-col z-40 relative">
+        
+        <div class="shrink-0 z-50 shadow-xl relative bg-white">
             <div class="bg-[#144935] text-white p-2 px-4 flex justify-between items-center relative border-b border-[#0e3325] h-16">
                 <div class="z-10 flex items-center gap-3">
                     <button onclick="if(confirm('Return to Main Menu?')) switchView('landing')" class="text-green-300 hover:text-white transition-colors" title="Back to Menu">
@@ -191,22 +186,59 @@
             </div>
         </div>
 
-        <div class="flex-1 flex overflow-hidden">
-            <div class="w-5/12 flex flex-col bg-gray-50 border-r border-gray-300 relative z-10">
+        <div class="flex-1 flex overflow-hidden relative">
+            
+            <div id="mobileBenchOverlay" onclick="toggleBench()" class="fixed inset-0 bg-black/50 z-40 hidden md:hidden transition-opacity"></div>
+
+            <div class="w-full md:w-5/12 flex flex-col bg-gray-50 border-r border-gray-300 relative z-10 transition-all">
                 <div class="header-court shrink-0">
                     <span>ON COURT</span>
                     <span id="onCourtCount" class="bg-green-600 text-white px-2 py-0.5 rounded text-sm">0/5</span>
                 </div>
                 <div id="courtGrid" class="flex-1 p-2 overflow-y-auto flex flex-col gap-2"></div>
             </div>
-            <div class="w-7/12 flex flex-col bg-white relative">
-                <div class="header-bench shrink-0">BENCH</div>
-                <div id="benchGrid" class="flex-1 p-2 overflow-y-auto grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 content-start"></div>
+
+            <div id="benchContainer" 
+                 class="fixed inset-y-0 right-0 w-3/4 max-w-sm bg-white shadow-2xl z-50 transform translate-x-full transition-transform duration-300 ease-in-out 
+                        md:static md:w-7/12 md:max-w-none md:translate-x-0 md:shadow-none md:z-auto flex flex-col">
+                
+                <div class="header-bench shrink-0 h-10 flex items-center">
+                    <span>BENCH</span>
+                    <button onclick="toggleBench()" class="md:hidden text-xs font-bold text-gray-500 flex items-center gap-1 px-2 py-1 bg-gray-200 rounded">
+                        CLOSE <span class="text-lg leading-none">›</span>
+                    </button>
+                </div>
+                <div id="benchGrid" class="flex-1 p-2 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 content-start"></div>
             </div>
+
+            <button onclick="toggleBench()" class="md:hidden fixed bottom-6 right-4 z-30 bg-[#002f6c] text-white px-4 py-3 rounded-full shadow-lg font-bold flex items-center gap-2 border-2 border-white hover:scale-105 active:scale-95 transition-transform">
+                <span class="text-lg">‹</span> BENCH
+            </button>
+
         </div>
     </div>
 
 <script>
+    // --- V20: 移动端替补席切换 ---
+    let isBenchOpen = false;
+
+    function toggleBench() {
+        const benchEl = document.getElementById('benchContainer');
+        const overlayEl = document.getElementById('mobileBenchOverlay');
+        
+        isBenchOpen = !isBenchOpen;
+
+        if (isBenchOpen) {
+            // Mobile Open
+            benchEl.classList.remove('translate-x-full');
+            overlayEl.classList.remove('hidden');
+        } else {
+            // Mobile Close
+            benchEl.classList.add('translate-x-full');
+            overlayEl.classList.add('hidden');
+        }
+    }
+
     // --- 视图切换逻辑 ---
     function switchView(viewName) {
         const landingEl = document.getElementById('landing-view');
@@ -291,15 +323,10 @@
 
         players.forEach(player => {
             const isLeader = maxScore > 0 && player.practiceTotal === maxScore;
-            
-            // 使用紧凑的 Grid Item 布局
             const card = document.createElement('div');
             const borderClass = isLeader ? 'ring-2 ring-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white';
-            
-            // 垂直布局的卡片: 上面是头像/信息，下面是3x3按钮网格
             card.className = `flex flex-col p-1.5 rounded-lg shadow-sm border ${borderClass} transition-all`;
 
-            // 构建3x3数据按钮网格
             let buttonsHtml = '';
             practiceCategories.forEach(cat => {
                 buttonsHtml += `
@@ -320,12 +347,11 @@
                         ${isLeader ? '<div class="absolute -top-1.5 -left-1.5 text-sm filter drop-shadow-md">🥤</div>' : ''}
                     </div>
                     <div class="flex-1 min-w-0">
-                        <div class="text-[10px] font-bold text-gray-900 truncate">${player.name.split(' ')[0]}</div>
+                        <div class="text-[10px] font-bold text-gray-900 truncate">${player.name}</div>
                         <div class="text-[8px] text-gray-400">#${player.number}</div>
                     </div>
                     <div class="text-lg font-black ${isLeader ? 'text-green-600' : 'text-gray-800'} leading-none">${player.practiceTotal}</div>
                 </div>
-
                 <div class="grid grid-cols-3 gap-1">
                     ${buttonsHtml}
                 </div>
@@ -508,7 +534,6 @@
             const displayTotal = Math.floor(player.totalSeconds / 60);
             
             card.id = `card-${player.id}`;
-            // Reduced gap from 3 to 2
             card.className = `on-court-card rounded-md flex items-center gap-2 cursor-pointer relative overflow-hidden p-2 mb-2`;
             card.onclick = () => handlePlayerClick(player.id); 
             
@@ -546,7 +571,7 @@
             courtContainer.appendChild(card);
         });
 
-        // 3. 渲染替补球员
+        // 3. 渲染替补球员 (支持 Grid 布局)
         benchPlayers.forEach(player => {
             const card = document.createElement('div');
             const displayTotal = Math.floor(player.totalSeconds / 60);
@@ -675,6 +700,10 @@
             player.isOnCourt = false;
             player.currentStint = 0; 
         } else {
+            // V19 修复: 自动关闭替补侧边栏 (移动端)
+            if (window.innerWidth < 768 && isBenchOpen) {
+                toggleBench(); // 选人后自动收起
+            }
             if (count >= 5) { alert("Max 5 players! Sub someone OUT first."); return; }
             player.isOnCourt = true;
             player.currentStint = 0; 
