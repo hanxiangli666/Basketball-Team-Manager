@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Drew Rangers Tracker Pro v16</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Drew Rangers Tracker Pro v18</title>
     <link rel="icon" href="icon.png" type="image/png">
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -32,7 +32,7 @@
 
         /* 比赛模式卡片 */
         .player-card {
-            transition: all 0.2s ease-in-out;
+            transition: all 0.3s ease-in-out;
             touch-action: manipulation;
             -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
         }
@@ -105,13 +105,12 @@
                     </div>
                 </button>
             </div>
-            <div class="mt-12 text-white/40 text-xs font-mono">Designed by Hanxiang(James) Li</div>
+            <div class="mt-12 text-white/40 text-xs font-mono">Designed for Drew University Athletics</div>
         </div>
     </div>
 
 
     <div id="practice-view" class="hidden w-full h-full flex flex-col bg-gray-100 relative z-40">
-        
         <div class="shrink-0 z-50 shadow-md bg-[#144935] text-white h-14 flex justify-between items-center px-4 border-b border-[#0e3325] relative">
             <div class="flex items-center gap-4 z-10">
                 <button onclick="switchView('landing')" class="flex items-center text-green-300 hover:text-white transition-colors">
@@ -137,10 +136,7 @@
         </div>
 
         <div class="flex-1 overflow-hidden flex flex-col p-2">
-            
-            <div id="practiceGrid" class="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 content-start pb-2">
-                </div>
-
+            <div id="practiceGrid" class="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 content-start pb-2"></div>
             <div class="h-48 bg-white p-2 rounded-xl shadow-sm border border-gray-200 shrink-0 flex flex-col">
                 <div class="flex justify-between items-center mb-1">
                     <h3 class="font-bold text-gray-800 text-[10px] uppercase flex items-center gap-2">
@@ -153,7 +149,6 @@
                     <canvas id="practiceChart"></canvas>
                 </div>
             </div>
-
         </div>
     </div>
 
@@ -503,70 +498,85 @@
         courtContainer.innerHTML = '';
         benchContainer.innerHTML = '';
 
-        players.forEach((player, index) => {
-            const card = document.createElement('div');
-            const foulColor = player.fouls >= 5 ? 'text-red-500 font-black' : 'text-gray-500';
-            const displayTotal = Math.floor(player.totalSeconds / 60);
+        // 1. 拆分场上和替补
+        const onCourtPlayers = players.filter(p => p.isOnCourt).sort((a, b) => b.currentStint - a.currentStint);
+        const benchPlayers = players.filter(p => !p.isOnCourt).sort((a, b) => a.id - b.id);
 
-            if (player.isOnCourt) {
-                card.id = `card-${index}`;
-                card.className = `on-court-card rounded-md flex items-center gap-3 cursor-pointer relative overflow-hidden p-2`;
-                card.onclick = () => handlePlayerClick(index); 
-                card.innerHTML = `
-                    <div class="photo-frame w-16 h-20 rounded border-2 border-white shrink-0 relative bg-gray-200">
-                        <img src="${player.img}" class="photo-img">
-                        <span class="absolute bottom-0 left-0 w-full text-center bg-black/70 text-white text-[10px] font-bold py-0.5">#${player.number}</span>
+        // 2. 渲染场上球员 (V18: 移动端适配)
+        onCourtPlayers.forEach(player => {
+            const card = document.createElement('div');
+            const displayTotal = Math.floor(player.totalSeconds / 60);
+            
+            card.id = `card-${player.id}`;
+            // Reduced gap from 3 to 2
+            card.className = `on-court-card rounded-md flex items-center gap-2 cursor-pointer relative overflow-hidden p-2 mb-2`;
+            card.onclick = () => handlePlayerClick(player.id); 
+            
+            card.innerHTML = `
+                <div class="photo-frame w-12 h-16 sm:w-16 sm:h-20 rounded border-2 border-white shrink-0 relative bg-gray-200">
+                    <img src="${player.img}" class="photo-img">
+                    <span class="absolute bottom-0 left-0 w-full text-center bg-black/70 text-white text-[9px] font-bold py-0.5">#${player.number}</span>
+                </div>
+                
+                <div class="flex-1 flex flex-col justify-center h-full min-w-0">
+                    <div class="mb-1">
+                        <h3 class="font-bold text-sm leading-tight text-white truncate">${player.name.split(' ')[0]}</h3>
+                        <h3 class="font-bold text-xs leading-tight text-blue-200 opacity-90 truncate">${player.name.split(' ').slice(1).join(' ')}</h3>
                     </div>
-                    <div class="flex-1 flex flex-col justify-center h-full">
-                        <div class="mb-1">
-                            <h3 class="font-bold text-sm leading-tight text-white">${player.name.split(' ')[0]}</h3>
-                            <h3 class="font-bold text-xs leading-tight text-blue-200 opacity-90">${player.name.split(' ').slice(1).join(' ')}</h3>
-                        </div>
-                        <div class="flex items-baseline gap-2">
-                            <div class="text-[9px] text-green-400 font-bold uppercase">Stint</div>
-                            <div id="stint-${index}" class="text-2xl font-mono font-black text-white leading-none">${formatTime(player.currentStint)}</div>
-                        </div>
+                    <div class="flex items-baseline gap-1">
+                        <div class="text-[8px] text-green-400 font-bold uppercase">Stint</div>
+                        <div id="stint-${player.id}" class="text-xl sm:text-2xl font-mono font-black text-white leading-none">${formatTime(player.currentStint)}</div>
                     </div>
-                    <div class="flex flex-col items-end justify-between border-l border-blue-900/50 pl-2 h-full py-1 gap-2">
-                        <div class="flex items-center gap-1 bg-blue-900/40 rounded px-1 py-0.5">
-                            <span class="text-[9px] text-blue-300 font-bold uppercase">Fouls</span>
-                            <span class="text-lg font-bold ${player.fouls >= 5 ? 'text-red-400' : 'text-white'} leading-none" id="foul-disp-${index}">${player.fouls}</span>
-                            <div class="flex flex-col gap-px ml-1">
-                                <button onclick="adjustFoul(event, ${index}, 1)" class="w-4 h-4 bg-red-600 hover:bg-red-500 text-white rounded flex items-center justify-center text-[10px]">+</button>
-                                <button onclick="adjustFoul(event, ${index}, -1)" class="w-4 h-4 bg-red-900 hover:bg-red-800 text-white rounded flex items-center justify-center text-[10px]">-</button>
-                            </div>
-                        </div>
-                        <div class="text-[9px] text-blue-200">
-                            Total: <span class="font-mono font-bold text-white text-sm" id="total-${index}">${displayTotal}</span>m
-                        </div>
-                    </div>
-                `;
-            } else {
-                card.className = `bench-card p-1 rounded flex flex-col items-center cursor-pointer relative pb-2 hover:border-green-500`;
-                card.onclick = () => handlePlayerClick(index);
-                card.innerHTML = `
-                    <div class="photo-frame w-full rounded mb-1 relative border border-gray-100">
-                        <img src="${player.img}" class="photo-img grayscale-[20%]">
-                        <span class="absolute bottom-0 right-0 bg-gray-700 text-white text-[9px] px-1 font-bold shadow">#${player.number}</span>
-                    </div>
-                    <h3 class="text-[9px] font-bold text-center truncate w-full leading-tight px-0.5 mb-1">${player.name}</h3>
-                    <div class="flex justify-between w-full px-1 items-center bg-gray-50 rounded py-0.5">
-                        <span class="text-[9px] font-mono text-gray-500">${displayTotal}m</span>
-                        <div class="flex items-center gap-0.5 ${foulColor}">
-                            <span class="text-[8px] font-bold opacity-70">F:</span>
-                            <span class="text-[9px] font-bold">${player.fouls}</span>
+                </div>
+
+                <div class="flex flex-col items-end justify-between border-l border-blue-900/50 pl-1 h-full py-1 gap-2 shrink-0">
+                    <div class="flex items-center gap-1 bg-blue-900/40 rounded px-1 py-0.5">
+                        <span class="text-[8px] text-blue-300 font-bold uppercase">Fouls</span>
+                        <span class="text-lg font-bold ${player.fouls >= 5 ? 'text-red-400' : 'text-white'} leading-none" id="foul-disp-${player.id}">${player.fouls}</span>
+                        <div class="flex flex-col gap-px ml-1">
+                            <button onclick="adjustFoul(event, ${player.id}, 1)" class="w-4 h-4 bg-red-600 hover:bg-red-500 text-white rounded flex items-center justify-center text-[10px]">+</button>
+                            <button onclick="adjustFoul(event, ${player.id}, -1)" class="w-4 h-4 bg-red-900 hover:bg-red-800 text-white rounded flex items-center justify-center text-[10px]">-</button>
                         </div>
                     </div>
-                `;
-            }
-            if (player.isOnCourt) courtContainer.appendChild(card);
-            else benchContainer.appendChild(card);
+                    <div class="text-[9px] text-blue-200">
+                        Total: <span class="font-mono font-bold text-white text-sm" id="total-${player.id}">${displayTotal}</span>m
+                    </div>
+                </div>
+            `;
+            courtContainer.appendChild(card);
         });
+
+        // 3. 渲染替补球员
+        benchPlayers.forEach(player => {
+            const card = document.createElement('div');
+            const displayTotal = Math.floor(player.totalSeconds / 60);
+            const foulColor = player.fouls >= 5 ? 'text-red-500 font-black' : 'text-gray-500';
+
+            card.className = `bench-card p-1 rounded flex flex-col items-center cursor-pointer relative pb-2 hover:border-green-500`;
+            card.onclick = () => handlePlayerClick(player.id);
+            
+            card.innerHTML = `
+                <div class="photo-frame w-full rounded mb-1 relative border border-gray-100">
+                    <img src="${player.img}" class="photo-img grayscale-[20%]">
+                    <span class="absolute bottom-0 right-0 bg-gray-700 text-white text-[9px] px-1 font-bold shadow">#${player.number}</span>
+                </div>
+                <h3 class="text-[9px] font-bold text-center truncate w-full leading-tight px-0.5 mb-1">${player.name}</h3>
+                <div class="flex justify-between w-full px-1 items-center bg-gray-50 rounded py-0.5">
+                    <span class="text-[9px] font-mono text-gray-500">${displayTotal}m</span>
+                    <div class="flex items-center gap-0.5 ${foulColor}">
+                        <span class="text-[8px] font-bold opacity-70">F:</span>
+                        <span class="text-[9px] font-bold">${player.fouls}</span>
+                    </div>
+                </div>
+            `;
+            benchContainer.appendChild(card);
+        });
+
         updatePlayerCount();
     }
 
-    function triggerAlert(index, alertClass) {
-        const card = document.getElementById(`card-${index}`);
+    function triggerAlert(playerId, alertClass) {
+        const card = document.getElementById(`card-${playerId}`);
         if (!card) return;
         card.classList.add(alertClass);
         setTimeout(() => { if (card) card.classList.remove(alertClass); }, 5000);
@@ -603,20 +613,24 @@
             if (p.isOnCourt) {
                 p.currentStint = Math.max(0, p.currentStint + diffSeconds);
                 p.totalSeconds = Math.max(0, p.totalSeconds + diffSeconds);
-                const stintEl = document.getElementById(`stint-${idx}`);
+                const stintEl = document.getElementById(`stint-${p.id}`);
                 if(stintEl) stintEl.innerText = formatTime(p.currentStint);
-                const totalEl = document.getElementById(`total-${idx}`);
+                const totalEl = document.getElementById(`total-${p.id}`);
                 if(totalEl) totalEl.innerText = Math.floor(p.totalSeconds/60);
             }
         });
     }
 
-    function adjustFoul(e, index, delta) {
+    function adjustFoul(e, id, delta) {
         e.stopPropagation(); 
-        const newFouls = players[index].fouls + delta;
-        if (newFouls < 0) return; 
-        players[index].fouls = newFouls;
-        renderPlayers(); 
+        const player = players.find(p => p.id === id); 
+        if (player) {
+            const newFouls = player.fouls + delta;
+            if (newFouls >= 0) {
+                player.fouls = newFouls;
+                renderPlayers(); 
+            }
+        }
     }
 
     function handleMainAction() {
@@ -648,12 +662,13 @@
         }
     }
 
-    function handlePlayerClick(index) {
-        const player = players[index];
+    function handlePlayerClick(id) {
+        const player = players.find(p => p.id === id); 
         const count = players.filter(p => p.isOnCourt).length;
+        
         if (gameState === "SETUP") {
             player.isOnCourt = !player.isOnCourt;
-            renderPlayers();
+            renderPlayers(); 
             return;
         }
         if (player.isOnCourt) {
@@ -664,7 +679,7 @@
             player.isOnCourt = true;
             player.currentStint = 0; 
         }
-        renderPlayers();
+        renderPlayers(); 
     }
 
     function startTicker() {
@@ -684,13 +699,13 @@
                 if (p.isOnCourt) {
                     p.currentStint++;
                     p.totalSeconds++;
-                    const stintEl = document.getElementById(`stint-${idx}`);
+                    const stintEl = document.getElementById(`stint-${p.id}`);
                     if(stintEl) stintEl.innerText = formatTime(p.currentStint);
-                    const totalEl = document.getElementById(`total-${idx}`);
+                    const totalEl = document.getElementById(`total-${p.id}`);
                     if(totalEl) totalEl.innerText = Math.floor(p.totalSeconds/60);
-                    if (p.currentStint === 120) triggerAlert(idx, "alert-level-1");
-                    if (p.currentStint === 180) triggerAlert(idx, "alert-level-2");
-                    if (p.currentStint === 240) triggerAlert(idx, "alert-level-3");
+                    if (p.currentStint === 120) triggerAlert(p.id, "alert-level-1");
+                    if (p.currentStint === 180) triggerAlert(p.id, "alert-level-2");
+                    if (p.currentStint === 240) triggerAlert(p.id, "alert-level-3");
                 }
             });
         }, 1000);
