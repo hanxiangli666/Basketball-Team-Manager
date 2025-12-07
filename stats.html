@@ -3,168 +3,244 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Drew Rangers Tracker Pro v11</title>
+    <title>Drew Rangers Tracker Pro v16</title>
     <link rel="icon" href="icon.png" type="image/png">
     
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
-        /* 禁止整体页面滚动，内容区域独立滚动 */
+        /* 全局设置 */
         body { 
             overflow: hidden; 
-            /* 替代方案: 使用标准属性禁止双击缩放，同时消除 viewport 报错 */
             touch-action: manipulation;
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
 
+        /* 登陆页背景 */
+        #landing-bg {
+            background: url('Background.jpg') no-repeat center center;
+            background-size: cover;
+            filter: blur(12px);
+            transform: scale(1.1);
+        }
+        .btn-landing { transition: all 0.2s ease; }
+        .btn-landing:active { transform: scale(0.95); }
+
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* 比赛模式卡片 */
         .player-card {
             transition: all 0.2s ease-in-out;
             touch-action: manipulation;
-            
-            /* 修复2: 增加浏览器兼容前缀，消除 CSS 报错 */
-            -webkit-user-select: none; /* Safari / Chrome */
-            -moz-user-select: none;    /* Firefox */
-            -ms-user-select: none;     /* IE / Edge */
-            user-select: none;         /* Standard */
+            -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
         }
-
-        /* --- 场上球员样式 (左侧) --- */
         .on-court-card {
-            background-color: #002f6c; /* Drew Blue */
-            color: white;
-            border-left: 6px solid #57a51d; /* 左侧加粗绿条 */
-            border-top: 1px solid #004080;
-            border-bottom: 1px solid #001f4c;
-            border-right: 1px solid #001f4c;
+            background-color: #002f6c; color: white;
+            border-left: 6px solid #57a51d;
+            border-top: 1px solid #004080; border-bottom: 1px solid #001f4c; border-right: 1px solid #001f4c;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
-        
-        /* --- 替补球员样式 (右侧) --- */
         .bench-card {
-            background-color: white;
-            color: #374151;
-            border: 1px solid #e5e7eb;
-            font-size: 0.75rem;
+            background-color: white; color: #374151;
+            border: 1px solid #e5e7eb; font-size: 0.75rem;
         }
         .bench-card:active { transform: scale(0.95); opacity: 0.8; }
         
-        /* 区域标题栏 */
         .header-court {
-            background-color: #002f6c;
-            color: white;
-            padding: 8px 12px;
-            font-weight: 800;
-            font-size: 0.9rem;
-            letter-spacing: 0.05em;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            background-color: #002f6c; color: white;
+            padding: 8px 12px; font-weight: 800; font-size: 0.9rem; letter-spacing: 0.05em;
+            display: flex; justify-content: space-between; align-items: center;
             border-bottom: 3px solid #57a51d;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-
         .header-bench {
-            background-color: #f3f4f6;
-            color: #4b5563;
-            padding: 8px 12px;
-            font-weight: 800;
-            font-size: 0.9rem;
-            letter-spacing: 0.05em;
+            background-color: #f3f4f6; color: #4b5563;
+            padding: 8px 12px; font-weight: 800; font-size: 0.9rem; letter-spacing: 0.05em;
             border-bottom: 1px solid #e5e7eb;
         }
 
-        .photo-frame {
-            aspect-ratio: 3 / 4;
-            overflow: hidden;
-            background-color: #e5e7eb;
-        }
-        .photo-img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            object-position: top;
-        }
+        .photo-frame { aspect-ratio: 3 / 4; overflow: hidden; background-color: #e5e7eb; }
+        .photo-img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
 
         /* 滚动条美化 */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        /* --- 疲劳特效动画 --- */
-        @keyframes pulse-yellow {
-            0%, 100% { box-shadow: inset 0 0 0 0 rgba(0,0,0,0); border-color: #57a51d; }
-            50% { box-shadow: inset 0 0 20px rgba(250, 204, 21, 0.8); border-color: #facc15; }
-        }
-        @keyframes pulse-orange {
-            0%, 100% { box-shadow: inset 0 0 0 0 rgba(0,0,0,0); border-color: #57a51d; }
-            50% { box-shadow: inset 0 0 30px rgba(249, 115, 22, 0.9); border-color: #f97316; }
-        }
-        @keyframes pulse-red {
-            0%, 100% { box-shadow: inset 0 0 0 0 rgba(0,0,0,0); border-color: #57a51d; }
-            50% { box-shadow: inset 0 0 40px rgba(239, 68, 68, 1); border-color: #ef4444; }
-        }
+        /* 疲劳特效 */
+        @keyframes pulse-yellow { 0%, 100% { box-shadow: inset 0 0 0 0 rgba(0,0,0,0); border-color: #57a51d; } 50% { box-shadow: inset 0 0 20px rgba(250, 204, 21, 0.8); border-color: #facc15; } }
+        @keyframes pulse-orange { 0%, 100% { box-shadow: inset 0 0 0 0 rgba(0,0,0,0); border-color: #57a51d; } 50% { box-shadow: inset 0 0 30px rgba(249, 115, 22, 0.9); border-color: #f97316; } }
+        @keyframes pulse-red { 0%, 100% { box-shadow: inset 0 0 0 0 rgba(0,0,0,0); border-color: #57a51d; } 50% { box-shadow: inset 0 0 40px rgba(239, 68, 68, 1); border-color: #ef4444; } }
 
         .alert-level-1 { animation: pulse-yellow 1s infinite; } 
         .alert-level-2 { animation: pulse-orange 1s infinite; } 
         .alert-level-3 { animation: pulse-red 0.5s infinite; }  
-
     </style>
 </head>
-<body class="bg-gray-100 h-screen flex flex-col">
+<body class="bg-gray-100 h-screen w-screen overflow-hidden font-sans">
 
-    <div class="shrink-0 z-50 shadow-xl relative">
-        <div class="bg-[#144935] text-white p-2 px-4 flex justify-between items-center relative border-b border-[#0e3325] h-16">
-            <div class="z-10">
-                <h1 class="text-xl font-extrabold tracking-tight leading-none">DREW MBB</h1>
-                <span id="gameStatusLabel" class="text-[10px] font-bold text-green-300 uppercase tracking-widest">PRE-GAME SETUP</span>
+    <div id="landing-view" class="w-full h-full flex flex-col items-center justify-center relative z-50">
+        <div id="landing-bg" class="absolute inset-0 w-full h-full"></div>
+        <div class="absolute inset-0 bg-black/50"></div>
+
+        <div class="relative z-10 flex flex-col items-center w-full max-w-5xl px-6">
+            <img src="Background.jpg" class="h-32 w-32 object-contain drop-shadow-2xl mb-6 rounded-full border-4 border-white/20 bg-white/10 backdrop-blur">
+            <h1 class="text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-lg text-center uppercase italic mb-12">
+                Drew Rangers <br>
+                <span class="text-green-400">Tracker Pro</span>
+            </h1>
+            <div class="flex flex-col sm:flex-row gap-6 w-full max-w-3xl">
+                <button onclick="switchView('practice')" class="btn-landing flex-1 group bg-white/10 backdrop-blur-md border border-white/30 hover:bg-white/20 text-white py-10 rounded-xl shadow-2xl relative overflow-hidden">
+                    <div class="relative z-10 flex flex-col items-center">
+                        <span class="text-xs font-bold text-gray-300 uppercase tracking-widest mb-2 group-hover:text-white transition-colors">Training</span>
+                        <span class="text-4xl font-black italic uppercase tracking-tight">Practice</span>
+                    </div>
+                </button>
+                <button onclick="switchView('game')" class="btn-landing flex-1 group bg-[#144935] border border-green-500 hover:bg-[#0e3325] text-white py-10 rounded-xl shadow-2xl relative overflow-hidden">
+                    <div class="relative z-10 flex flex-col items-center">
+                        <span class="text-xs font-bold text-green-300 uppercase tracking-widest mb-2 group-hover:text-white transition-colors">Match Day</span>
+                        <span class="text-4xl font-black italic uppercase tracking-tight">Game</span>
+                    </div>
+                </button>
             </div>
-            <div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                <img src="Background.jpg" alt="Drew Logo" class="h-12 object-contain drop-shadow-md">
+            <div class="mt-12 text-white/40 text-xs font-mono">Designed for Drew University Athletics</div>
+        </div>
+    </div>
+
+
+    <div id="practice-view" class="hidden w-full h-full flex flex-col bg-gray-100 relative z-40">
+        
+        <div class="shrink-0 z-50 shadow-md bg-[#144935] text-white h-14 flex justify-between items-center px-4 border-b border-[#0e3325] relative">
+            <div class="flex items-center gap-4 z-10">
+                <button onclick="switchView('landing')" class="flex items-center text-green-300 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                    <span class="ml-1 text-xs font-bold uppercase">Menu</span>
+                </button>
+                <div class="hidden sm:block">
+                    <h1 class="text-lg font-extrabold tracking-tight leading-none">PRACTICE MODE</h1>
+                </div>
             </div>
-            <div class="flex flex-col items-end z-10">
-                <div id="gameClock" onclick="syncClockManual()" class="text-3xl font-mono font-black tracking-tighter leading-none hover:text-green-300 transition-colors cursor-pointer" title="Click to Edit Time">20:00</div>
-                <div class="flex gap-2 items-center mt-1">
-                    <span class="text-[9px] text-green-200 cursor-pointer" onclick="syncClockManual()">TAP TO SYNC</span>
-                    <div class="flex gap-0.5">
-                        <button onclick="adjustOneSecond(1)" class="text-[9px] bg-white/10 hover:bg-white/20 border border-white/10 text-white px-1.5 rounded transition-colors">+1s</button>
-                        <button onclick="adjustOneSecond(-1)" class="text-[9px] bg-white/10 hover:bg-white/20 border border-white/10 text-white px-1.5 rounded transition-colors">-1s</button>
+            <div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                <img src="Background.jpg" alt="Logo" class="h-10 object-contain drop-shadow-md opacity-90 rounded">
+            </div>
+            <div class="flex gap-2 z-10">
+                <button onclick="sortPracticePlayers()" class="bg-yellow-500 hover:bg-yellow-400 text-black text-xs px-3 py-1.5 rounded shadow transition-colors font-bold uppercase tracking-wider flex items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" /></svg>
+                    Sort
+                </button>
+                <button onclick="resetPractice()" class="bg-red-700/80 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded shadow transition-colors font-bold uppercase tracking-wider">
+                    Reset
+                </button>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-hidden flex flex-col p-2">
+            
+            <div id="practiceGrid" class="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 content-start pb-2">
+                </div>
+
+            <div class="h-48 bg-white p-2 rounded-xl shadow-sm border border-gray-200 shrink-0 flex flex-col">
+                <div class="flex justify-between items-center mb-1">
+                    <h3 class="font-bold text-gray-800 text-[10px] uppercase flex items-center gap-2">
+                        Stats Leaderboard
+                    </h3>
+                    <span id="chartTitle" class="text-[9px] font-black text-green-600 bg-green-50 px-2 py-0.5 rounded">TOTAL SCORE</span>
+                </div>
+                <div class="flex gap-1 overflow-x-auto pb-1 mb-1 scrollbar-hide" id="chart-tabs"></div>
+                <div class="relative flex-1 w-full min-h-0">
+                    <canvas id="practiceChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+
+    <div id="game-view" class="hidden w-full h-full flex flex-col z-40">
+        <div class="shrink-0 z-50 shadow-xl relative">
+            <div class="bg-[#144935] text-white p-2 px-4 flex justify-between items-center relative border-b border-[#0e3325] h-16">
+                <div class="z-10 flex items-center gap-3">
+                    <button onclick="if(confirm('Return to Main Menu?')) switchView('landing')" class="text-green-300 hover:text-white transition-colors" title="Back to Menu">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                    </button>
+                    <div>
+                        <h1 class="text-xl font-extrabold tracking-tight leading-none">DREW MBB</h1>
+                        <span id="gameStatusLabel" class="text-[10px] font-bold text-green-300 uppercase tracking-widest">PRE-GAME SETUP</span>
+                    </div>
+                </div>
+                <div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                    <img src="Background.jpg" alt="Drew Logo" class="h-12 object-contain drop-shadow-md">
+                </div>
+                <div class="flex flex-col items-end z-10">
+                    <div id="gameClock" onclick="syncClockManual()" class="text-3xl font-mono font-black tracking-tighter leading-none hover:text-green-300 transition-colors cursor-pointer" title="Click to Edit Time">20:00</div>
+                    <div class="flex gap-2 items-center mt-1">
+                        <span class="text-[9px] text-green-200 cursor-pointer" onclick="syncClockManual()">TAP TO SYNC</span>
+                        <div class="flex gap-0.5">
+                            <button onclick="adjustOneSecond(1)" class="text-[9px] bg-white/10 hover:bg-white/20 border border-white/10 text-white px-1.5 rounded transition-colors">+1s</button>
+                            <button onclick="adjustOneSecond(-1)" class="text-[9px] bg-white/10 hover:bg-white/20 border border-white/10 text-white px-1.5 rounded transition-colors">-1s</button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        
-        <div class="bg-white p-2 flex gap-2 border-b border-gray-300">
-            <button id="mainActionBtn" onclick="handleMainAction()" class="flex-1 bg-[#002f6c] text-white py-2 rounded font-bold text-base shadow-sm hover:bg-[#003d8c] active:bg-[#001f4c] transition-colors border-b-4 border-[#001f4c] active:border-b-0 active:translate-y-1">
-                CONFIRM STARTERS
-            </button>
-            <div class="flex gap-2">
-                <button onclick="exportData()" class="bg-gray-600 text-white px-3 py-2 rounded font-semibold text-xs shadow-sm hover:bg-gray-500 transition-colors">Export</button>
-                <button onclick="resetHalf()" class="bg-orange-600 text-white px-3 py-2 rounded font-semibold text-xs shadow-sm hover:bg-orange-500 transition-colors">Reset Half</button>
-                <button onclick="fullReset()" class="bg-red-700 text-white px-3 py-2 rounded font-semibold text-xs shadow-sm hover:bg-red-600 transition-colors">New Game</button>
+            <div class="bg-white p-2 flex gap-2 border-b border-gray-300">
+                <button id="mainActionBtn" onclick="handleMainAction()" class="flex-1 bg-[#002f6c] text-white py-2 rounded font-bold text-base shadow-sm hover:bg-[#003d8c] active:bg-[#001f4c] transition-colors border-b-4 border-[#001f4c] active:border-b-0 active:translate-y-1">
+                    CONFIRM STARTERS
+                </button>
+                <div class="flex gap-2">
+                    <button onclick="exportData()" class="bg-gray-600 text-white px-3 py-2 rounded font-semibold text-xs shadow-sm hover:bg-gray-500 transition-colors">Export</button>
+                    <button onclick="resetHalf()" class="bg-orange-600 text-white px-3 py-2 rounded font-semibold text-xs shadow-sm hover:bg-orange-500 transition-colors">Reset Half</button>
+                    <button onclick="fullReset()" class="bg-red-700 text-white px-3 py-2 rounded font-semibold text-xs shadow-sm hover:bg-red-600 transition-colors">New Game</button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="flex-1 flex overflow-hidden">
-        
-        <div class="w-5/12 flex flex-col bg-gray-50 border-r border-gray-300 relative z-10">
-            <div class="header-court shrink-0">
-                <span>ON COURT</span>
-                <span id="onCourtCount" class="bg-green-600 text-white px-2 py-0.5 rounded text-sm">0/5</span>
+        <div class="flex-1 flex overflow-hidden">
+            <div class="w-5/12 flex flex-col bg-gray-50 border-r border-gray-300 relative z-10">
+                <div class="header-court shrink-0">
+                    <span>ON COURT</span>
+                    <span id="onCourtCount" class="bg-green-600 text-white px-2 py-0.5 rounded text-sm">0/5</span>
+                </div>
+                <div id="courtGrid" class="flex-1 p-2 overflow-y-auto flex flex-col gap-2"></div>
             </div>
-            <div id="courtGrid" class="flex-1 p-2 overflow-y-auto flex flex-col gap-2">
-                </div>
+            <div class="w-7/12 flex flex-col bg-white relative">
+                <div class="header-bench shrink-0">BENCH</div>
+                <div id="benchGrid" class="flex-1 p-2 overflow-y-auto grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 content-start"></div>
+            </div>
         </div>
-
-        <div class="w-7/12 flex flex-col bg-white relative">
-            <div class="header-bench shrink-0">BENCH</div>
-            <div id="benchGrid" class="flex-1 p-2 overflow-y-auto grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 content-start">
-                </div>
-        </div>
-        
     </div>
 
 <script>
-    // --- 数据源定义 ---
+    // --- 视图切换逻辑 ---
+    function switchView(viewName) {
+        const landingEl = document.getElementById('landing-view');
+        const practiceEl = document.getElementById('practice-view');
+        const gameEl = document.getElementById('game-view');
+
+        landingEl.classList.add('hidden');
+        practiceEl.classList.add('hidden');
+        gameEl.classList.add('hidden');
+
+        if (viewName === 'landing') {
+            landingEl.classList.remove('hidden');
+        } else if (viewName === 'practice') {
+            practiceEl.classList.remove('hidden');
+            if (!practiceChart) {
+                setTimeout(() => {
+                    initPracticeChart();
+                    updateChartData();
+                }, 50); 
+            } else {
+                updateChartData(); 
+            }
+            renderPractice(); 
+        } else if (viewName === 'game') {
+            gameEl.classList.remove('hidden');
+        }
+    }
+
+    // --- 数据源 ---
     let players = [
         { id: 0, name: "Charlie Thornton", number: 0, img: "Photos/Charlie.png", currentStint: 0, totalSeconds: 0, fouls: 0, isOnCourt: false },
         { id: 1, name: "Jalen Holmes", number: 1, img: "Photos/Jalen.png", currentStint: 0, totalSeconds: 0, fouls: 0, isOnCourt: false },
@@ -188,11 +264,211 @@
 
     const DEFAULT_STARTERS = ["Eli", "Andre", "Devon", "David", "Kevin Cronin"];
 
+    // --- GAME 模式变量 ---
     let gameState = "SETUP"; 
     let gameClockSeconds = 1200;
     let tickerInterval;
 
-    // --- 初始化 ---
+    // --- PRACTICE 模式逻辑 ---
+    const practiceCategories = [
+        { key: 'charges', label: 'CHG' },
+        { key: 'sprint', label: 'SPR' },
+        { key: 'bDrives', label: 'BLD' }, 
+        { key: 'pTouch', label: 'PNT' }, 
+        { key: 'ast', label: 'AST' },
+        { key: 'stl', label: 'STL' },
+        { key: 'defl', label: 'DEF' },
+        { key: 'dReb', label: 'DRB' },
+        { key: 'oReb', label: 'ORB' }
+    ];
+
+    players.forEach(p => {
+        p.practiceStats = {};
+        p.practiceTotal = 0;
+        practiceCategories.forEach(cat => p.practiceStats[cat.key] = 0);
+    });
+
+    function renderPractice() {
+        const container = document.getElementById('practiceGrid');
+        container.innerHTML = '';
+
+        const maxScore = Math.max(...players.map(p => p.practiceTotal));
+
+        players.forEach(player => {
+            const isLeader = maxScore > 0 && player.practiceTotal === maxScore;
+            
+            // 使用紧凑的 Grid Item 布局
+            const card = document.createElement('div');
+            const borderClass = isLeader ? 'ring-2 ring-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white';
+            
+            // 垂直布局的卡片: 上面是头像/信息，下面是3x3按钮网格
+            card.className = `flex flex-col p-1.5 rounded-lg shadow-sm border ${borderClass} transition-all`;
+
+            // 构建3x3数据按钮网格
+            let buttonsHtml = '';
+            practiceCategories.forEach(cat => {
+                buttonsHtml += `
+                    <div class="flex flex-col items-center justify-center">
+                        <span class="text-[7px] text-gray-400 font-bold uppercase leading-none mb-0.5">${cat.label}</span>
+                        <button onclick="updatePracticeStat(${player.id}, '${cat.key}', 1)" 
+                                class="w-full h-5 bg-white border border-gray-200 rounded text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-600 active:text-white transition-colors shadow-sm leading-none">
+                            ${player.practiceStats[cat.key]}
+                        </button>
+                    </div>
+                `;
+            });
+
+            card.innerHTML = `
+                <div class="flex items-center gap-2 mb-1.5 border-b border-gray-100 pb-1.5">
+                    <div class="relative w-8 h-10 shrink-0">
+                        <img src="${player.img}" class="w-full h-full object-cover rounded bg-gray-200">
+                        ${isLeader ? '<div class="absolute -top-1.5 -left-1.5 text-sm filter drop-shadow-md">🥤</div>' : ''}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-[10px] font-bold text-gray-900 truncate">${player.name.split(' ')[0]}</div>
+                        <div class="text-[8px] text-gray-400">#${player.number}</div>
+                    </div>
+                    <div class="text-lg font-black ${isLeader ? 'text-green-600' : 'text-gray-800'} leading-none">${player.practiceTotal}</div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-1">
+                    ${buttonsHtml}
+                </div>
+            `;
+            container.appendChild(card);
+        });
+        
+        updateChartData();
+    }
+
+    function updatePracticeStat(playerId, key, delta) {
+        const player = players.find(p => p.id === playerId);
+        if(player) {
+            player.practiceStats[key] += delta;
+            player.practiceTotal = practiceCategories.reduce((sum, cat) => {
+                return sum + (player.practiceStats[cat.key] || 0);
+            }, 0);
+            renderPractice();
+        }
+    }
+
+    function sortPracticePlayers() {
+        players.sort((a, b) => b.practiceTotal - a.practiceTotal);
+        renderPractice();
+    }
+
+    function resetPractice() {
+        if(confirm("Reset all practice stats?")) {
+            players.forEach(p => {
+                practiceCategories.forEach(cat => p.practiceStats[cat.key] = 0);
+                p.practiceTotal = 0;
+            });
+            players.sort((a,b) => a.id - b.id);
+            renderPractice();
+        }
+    }
+
+    // --- Chart.js 逻辑 ---
+    let practiceChart = null;
+    let currentChartMetric = 'total';
+
+    function initPracticeChart() {
+        const ctx = document.getElementById('practiceChart').getContext('2d');
+        const tabsContainer = document.getElementById('chart-tabs');
+        tabsContainer.innerHTML = '';
+        
+        const totalBtn = createChartTab('Total', 'total', true);
+        tabsContainer.appendChild(totalBtn);
+
+        practiceCategories.forEach(cat => {
+            tabsContainer.appendChild(createChartTab(cat.label, cat.key, false));
+        });
+
+        practiceChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Score',
+                    data: [],
+                    backgroundColor: '#144935',
+                    borderRadius: 3,
+                    borderSkipped: false,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            // 修复: 鼠标悬停显示全名
+                            title: (items) => {
+                                // 通过索引找到原始数据中的名字，或者直接使用label（如果是全名）
+                                return items[0].label; 
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true, grid: { display: true, color: '#f3f4f6' }, ticks: { font: { size: 9 } } },
+                    x: { grid: { display: false }, ticks: { font: { size: 8 }, maxRotation: 45, minRotation: 45 } } // 名字斜着放防止重叠
+                },
+                animation: { duration: 300 }
+            }
+        });
+    }
+
+    function createChartTab(label, key, isActive) {
+        const btn = document.createElement('button');
+        btn.innerText = label;
+        btn.className = `px-2 py-0.5 rounded text-[9px] font-bold uppercase transition-colors shrink-0 border ${isActive ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`;
+        btn.onclick = () => switchChartMetric(key, btn);
+        return btn;
+    }
+
+    function switchChartMetric(key, btnElement) {
+        currentChartMetric = key;
+        const tabs = document.getElementById('chart-tabs').children;
+        for (let tab of tabs) {
+            tab.className = tab.className.replace('bg-green-600 text-white border-green-600', 'bg-white text-gray-500 border-gray-200');
+        }
+        btnElement.className = btnElement.className.replace('bg-white text-gray-500 border-gray-200', 'bg-green-600 text-white border-green-600');
+
+        const titleMap = practiceCategories.reduce((acc, cur) => ({...acc, [cur.key]: cur.label}), {total: 'TOTAL SCORE'});
+        document.getElementById('chartTitle').innerText = titleMap[key] || 'STATS';
+
+        updateChartData();
+    }
+
+    function updateChartData() {
+        if (!practiceChart) return;
+
+        const sortedForChart = [...players].sort((a, b) => {
+            const valA = currentChartMetric === 'total' ? a.practiceTotal : (a.practiceStats[currentChartMetric] || 0);
+            const valB = currentChartMetric === 'total' ? b.practiceTotal : (b.practiceStats[currentChartMetric] || 0);
+            return valB - valA;
+        }); 
+
+        // 修复: 使用全名显示 (Full Name)
+        const labels = sortedForChart.map(p => p.name); 
+        
+        const data = sortedForChart.map(p => 
+            currentChartMetric === 'total' ? p.practiceTotal : (p.practiceStats[currentChartMetric] || 0)
+        );
+
+        const colors = sortedForChart.map((_, index) => index === 0 && data[0] > 0 ? '#fbbf24' : '#144935');
+
+        practiceChart.data.labels = labels;
+        practiceChart.data.datasets[0].data = data;
+        practiceChart.data.datasets[0].backgroundColor = colors;
+        practiceChart.update();
+    }
+
+
+    // --- GAME 模式核心逻辑 ---
+
     function init() {
         resetToDefaults();
     }
@@ -221,7 +497,6 @@
         document.getElementById('gameStatusLabel').className = "text-[10px] font-bold text-green-300 uppercase tracking-widest";
     }
 
-    // --- 渲染逻辑 ---
     function renderPlayers() {
         const courtContainer = document.getElementById('courtGrid');
         const benchContainer = document.getElementById('benchGrid');
@@ -231,19 +506,17 @@
         players.forEach((player, index) => {
             const card = document.createElement('div');
             const foulColor = player.fouls >= 5 ? 'text-red-500 font-black' : 'text-gray-500';
+            const displayTotal = Math.floor(player.totalSeconds / 60);
 
             if (player.isOnCourt) {
-                // [左侧] 场上球员：垂直布局卡片
                 card.id = `card-${index}`;
                 card.className = `on-court-card rounded-md flex items-center gap-3 cursor-pointer relative overflow-hidden p-2`;
                 card.onclick = () => handlePlayerClick(index); 
-                
                 card.innerHTML = `
                     <div class="photo-frame w-16 h-20 rounded border-2 border-white shrink-0 relative bg-gray-200">
                         <img src="${player.img}" class="photo-img">
                         <span class="absolute bottom-0 left-0 w-full text-center bg-black/70 text-white text-[10px] font-bold py-0.5">#${player.number}</span>
                     </div>
-                    
                     <div class="flex-1 flex flex-col justify-center h-full">
                         <div class="mb-1">
                             <h3 class="font-bold text-sm leading-tight text-white">${player.name.split(' ')[0]}</h3>
@@ -254,7 +527,6 @@
                             <div id="stint-${index}" class="text-2xl font-mono font-black text-white leading-none">${formatTime(player.currentStint)}</div>
                         </div>
                     </div>
-
                     <div class="flex flex-col items-end justify-between border-l border-blue-900/50 pl-2 h-full py-1 gap-2">
                         <div class="flex items-center gap-1 bg-blue-900/40 rounded px-1 py-0.5">
                             <span class="text-[9px] text-blue-300 font-bold uppercase">Fouls</span>
@@ -264,17 +536,14 @@
                                 <button onclick="adjustFoul(event, ${index}, -1)" class="w-4 h-4 bg-red-900 hover:bg-red-800 text-white rounded flex items-center justify-center text-[10px]">-</button>
                             </div>
                         </div>
-                        
                         <div class="text-[9px] text-blue-200">
-                            Total: <span class="font-mono font-bold text-white text-sm" id="total-${index}">${(player.totalSeconds/60).toFixed(0)}</span>m
+                            Total: <span class="font-mono font-bold text-white text-sm" id="total-${index}">${displayTotal}</span>m
                         </div>
                     </div>
                 `;
             } else {
-                // [右侧] 替补球员：紧凑网格布局
                 card.className = `bench-card p-1 rounded flex flex-col items-center cursor-pointer relative pb-2 hover:border-green-500`;
                 card.onclick = () => handlePlayerClick(index);
-
                 card.innerHTML = `
                     <div class="photo-frame w-full rounded mb-1 relative border border-gray-100">
                         <img src="${player.img}" class="photo-img grayscale-[20%]">
@@ -282,7 +551,7 @@
                     </div>
                     <h3 class="text-[9px] font-bold text-center truncate w-full leading-tight px-0.5 mb-1">${player.name}</h3>
                     <div class="flex justify-between w-full px-1 items-center bg-gray-50 rounded py-0.5">
-                        <span class="text-[9px] font-mono text-gray-500">${(player.totalSeconds/60).toFixed(0)}m</span>
+                        <span class="text-[9px] font-mono text-gray-500">${displayTotal}m</span>
                         <div class="flex items-center gap-0.5 ${foulColor}">
                             <span class="text-[8px] font-bold opacity-70">F:</span>
                             <span class="text-[9px] font-bold">${player.fouls}</span>
@@ -290,26 +559,19 @@
                     </div>
                 `;
             }
-
             if (player.isOnCourt) courtContainer.appendChild(card);
             else benchContainer.appendChild(card);
         });
-
         updatePlayerCount();
     }
 
-    // --- 辅助函数 ---
     function triggerAlert(index, alertClass) {
         const card = document.getElementById(`card-${index}`);
         if (!card) return;
         card.classList.add(alertClass);
-        setTimeout(() => {
-            if (card) card.classList.remove(alertClass);
-        }, 5000);
+        setTimeout(() => { if (card) card.classList.remove(alertClass); }, 5000);
     }
 
-    // --- 交互逻辑 ---
-    
     function adjustOneSecond(diff) {
         gameClockSeconds += diff;
         applyTimeAdjustment(-diff); 
@@ -319,8 +581,7 @@
     function syncClockManual() {
         const oldTime = gameClockSeconds;
         const currentStr = formatTime(oldTime);
-        const input = prompt("SYNC: Enter scoreboard time (mm:ss).\nActive players' times will be adjusted automatically.", currentStr);
-        
+        const input = prompt("SYNC: Enter scoreboard time (mm:ss).", currentStr);
         if (input) {
             const parts = input.split(':');
             if (parts.length === 2) {
@@ -342,12 +603,10 @@
             if (p.isOnCourt) {
                 p.currentStint = Math.max(0, p.currentStint + diffSeconds);
                 p.totalSeconds = Math.max(0, p.totalSeconds + diffSeconds);
-                
                 const stintEl = document.getElementById(`stint-${idx}`);
                 if(stintEl) stintEl.innerText = formatTime(p.currentStint);
-
                 const totalEl = document.getElementById(`total-${idx}`);
-                if(totalEl) totalEl.innerText = (p.totalSeconds/60).toFixed(0);
+                if(totalEl) totalEl.innerText = Math.floor(p.totalSeconds/60);
             }
         });
     }
@@ -392,13 +651,11 @@
     function handlePlayerClick(index) {
         const player = players[index];
         const count = players.filter(p => p.isOnCourt).length;
-
         if (gameState === "SETUP") {
             player.isOnCourt = !player.isOnCourt;
             renderPlayers();
             return;
         }
-
         if (player.isOnCourt) {
             player.isOnCourt = false;
             player.currentStint = 0; 
@@ -410,7 +667,6 @@
         renderPlayers();
     }
 
-    // --- 计时器核心 ---
     function startTicker() {
         stopTicker();
         tickerInterval = setInterval(() => {
@@ -424,18 +680,14 @@
                 alert("Period Ended");
                 return;
             }
-            
             players.forEach((p, idx) => {
                 if (p.isOnCourt) {
                     p.currentStint++;
                     p.totalSeconds++;
-                    
                     const stintEl = document.getElementById(`stint-${idx}`);
                     if(stintEl) stintEl.innerText = formatTime(p.currentStint);
-
                     const totalEl = document.getElementById(`total-${idx}`);
-                    if(totalEl) totalEl.innerText = (p.totalSeconds/60).toFixed(0);
-
+                    if(totalEl) totalEl.innerText = Math.floor(p.totalSeconds/60);
                     if (p.currentStint === 120) triggerAlert(idx, "alert-level-1");
                     if (p.currentStint === 180) triggerAlert(idx, "alert-level-2");
                     if (p.currentStint === 240) triggerAlert(idx, "alert-level-3");
@@ -465,7 +717,7 @@
     }
 
     function exportData() {
-        let csv = "data:text/csv;charset=utf-8,\uFEFFName,Number,Minutes,Fouls\n";
+        let csv = "data:text/csv;charset=utf-8,Name,Number,Minutes,Fouls\n";
         players.forEach(p => {
             csv += `${p.name},${p.number},${(p.totalSeconds/60).toFixed(1)},${p.fouls}\n`;
         });
@@ -477,7 +729,7 @@
     }
 
     function resetHalf() {
-        if(!confirm("Start 2nd Half? (Reset Clock to 20:00, Reset Stints, Keep Fouls/Total)")) return;
+        if(!confirm("Start 2nd Half?")) return;
         gameClockSeconds = 1200;
         gameState = "PAUSED";
         players.forEach(p => p.currentStint = 0);
@@ -489,9 +741,7 @@
     }
 
     function fullReset() {
-        if(confirm("Are you sure? This will wipe all stats and start a NEW GAME.")) {
-            resetToDefaults();
-        }
+        if(confirm("New Game?")) resetToDefaults();
     }
 
     init();
