@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Drew Rangers Tracker Pro v20</title>
+    <title>Drew Rangers Tracker Pro v21</title>
     <link rel="icon" href="icon.png" type="image/png">
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -101,7 +101,7 @@
                     </div>
                 </button>
             </div>
-            <div class="mt-12 text-white/40 text-xs font-mono">Designed By Hanxiang(James) Li</div>
+            <div class="mt-12 text-white/40 text-xs font-mono">Designed by Hanxiang(James) Li</div>
         </div>
     </div>
 
@@ -219,6 +219,42 @@
     </div>
 
 <script>
+    // --- 本地存储 (Persistence Logic) ---
+    const STORAGE_KEY = 'drewTrackerState_v21'; // 确保key唯一，避免冲突
+
+    // 保存当前状态到 LocalStorage
+    function saveState() {
+        const state = {
+            players: players,
+            gameClockSeconds: gameClockSeconds,
+            // 注意：我们只保存必要的数据，UI状态（如抽屉是否打开）通常不保存
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    // 从 LocalStorage 加载状态
+    function loadState() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                
+                // 恢复数据
+                if (parsed.players) players = parsed.players;
+                if (parsed.gameClockSeconds !== undefined) gameClockSeconds = parsed.gameClockSeconds;
+                
+                // 恢复后默认暂停，防止时间乱跑
+                gameState = "PAUSED"; 
+                
+                return true; // 加载成功
+            } catch (e) {
+                console.error("Load failed:", e);
+                return false;
+            }
+        }
+        return false;
+    }
+
     // --- V20: 移动端替补席切换 ---
     let isBenchOpen = false;
 
@@ -229,11 +265,9 @@
         isBenchOpen = !isBenchOpen;
 
         if (isBenchOpen) {
-            // Mobile Open
             benchEl.classList.remove('translate-x-full');
             overlayEl.classList.remove('hidden');
         } else {
-            // Mobile Close
             benchEl.classList.add('translate-x-full');
             overlayEl.classList.add('hidden');
         }
@@ -264,6 +298,20 @@
             renderPractice(); 
         } else if (viewName === 'game') {
             gameEl.classList.remove('hidden');
+            // 进入比赛模式时，如果有数据，刷新UI
+            updateClockDisplay();
+            renderPlayers();
+            // 更新按钮状态
+            const btn = document.getElementById('mainActionBtn');
+            const onCourtCount = players.filter(p => p.isOnCourt).length;
+            
+            // 如果是刚加载的旧数据且已选好首发，显示 Start Game
+            if (onCourtCount === 5 && gameState === "PAUSED") {
+                 btn.innerText = "RESUME CLOCK";
+                 btn.className = "flex-1 bg-green-600 text-white py-2 rounded font-bold text-base shadow-sm hover:bg-green-700 active:bg-green-800 transition-colors border-b-4 border-green-800 active:border-b-0 active:translate-y-1";
+                 document.getElementById('gameStatusLabel').innerText = "PAUSED";
+                 document.getElementById('gameStatusLabel').className = "text-[10px] font-bold text-yellow-400 uppercase tracking-widest";
+            }
         }
     }
 
@@ -309,10 +357,13 @@
         { key: 'oReb', label: 'ORB' }
     ];
 
+    // 初始化 Practice 数据 (如果加载了State，这里会覆盖，但为了安全先初始化)
     players.forEach(p => {
-        p.practiceStats = {};
-        p.practiceTotal = 0;
-        practiceCategories.forEach(cat => p.practiceStats[cat.key] = 0);
+        if(!p.practiceStats) {
+            p.practiceStats = {};
+            p.practiceTotal = 0;
+            practiceCategories.forEach(cat => p.practiceStats[cat.key] = 0);
+        }
     });
 
     function renderPractice() {
@@ -370,12 +421,14 @@
                 return sum + (player.practiceStats[cat.key] || 0);
             }, 0);
             renderPractice();
+            saveState(); // AUTO SAVE
         }
     }
 
     function sortPracticePlayers() {
         players.sort((a, b) => b.practiceTotal - a.practiceTotal);
         renderPractice();
+        saveState(); // AUTO SAVE (排序偏好也可以存，但这里主要存数组顺序)
     }
 
     function resetPractice() {
@@ -386,6 +439,7 @@
             });
             players.sort((a,b) => a.id - b.id);
             renderPractice();
+            saveState(); // AUTO SAVE
         }
     }
 
@@ -424,17 +478,13 @@
                     legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            // 修复: 鼠标悬停显示全名
-                            title: (items) => {
-                                // 通过索引找到原始数据中的名字，或者直接使用label（如果是全名）
-                                return items[0].label; 
-                            }
+                            title: (items) => items[0].label
                         }
                     }
                 },
                 scales: {
                     y: { beginAtZero: true, grid: { display: true, color: '#f3f4f6' }, ticks: { font: { size: 9 } } },
-                    x: { grid: { display: false }, ticks: { font: { size: 8 }, maxRotation: 45, minRotation: 45 } } // 名字斜着放防止重叠
+                    x: { grid: { display: false }, ticks: { font: { size: 8 }, maxRotation: 45, minRotation: 45 } }
                 },
                 animation: { duration: 300 }
             }
@@ -472,9 +522,7 @@
             return valB - valA;
         }); 
 
-        // 修复: 使用全名显示 (Full Name)
         const labels = sortedForChart.map(p => p.name); 
-        
         const data = sortedForChart.map(p => 
             currentChartMetric === 'total' ? p.practiceTotal : (p.practiceStats[currentChartMetric] || 0)
         );
@@ -490,8 +538,15 @@
 
     // --- GAME 模式核心逻辑 ---
 
+    // 修改 init，优先加载本地存储
     function init() {
-        resetToDefaults();
+        if (!loadState()) {
+            resetToDefaults();
+        } else {
+            // 如果加载成功，也需要初始化UI
+            renderPlayers();
+            // Practice data is also loaded, but UI is initialized when switching view
+        }
     }
 
     function resetToDefaults() {
@@ -505,6 +560,11 @@
             p.fouls = 0;
             const isStarter = DEFAULT_STARTERS.some(starterName => p.name.includes(starterName));
             p.isOnCourt = isStarter;
+            
+            // 重置 practice
+            p.practiceStats = {};
+            p.practiceTotal = 0;
+            practiceCategories.forEach(cat => p.practiceStats[cat.key] = 0);
         });
 
         updateClockDisplay();
@@ -524,11 +584,9 @@
         courtContainer.innerHTML = '';
         benchContainer.innerHTML = '';
 
-        // 1. 拆分场上和替补
         const onCourtPlayers = players.filter(p => p.isOnCourt).sort((a, b) => b.currentStint - a.currentStint);
         const benchPlayers = players.filter(p => !p.isOnCourt).sort((a, b) => a.id - b.id);
 
-        // 2. 渲染场上球员 (V18: 移动端适配)
         onCourtPlayers.forEach(player => {
             const card = document.createElement('div');
             const displayTotal = Math.floor(player.totalSeconds / 60);
@@ -571,7 +629,6 @@
             courtContainer.appendChild(card);
         });
 
-        // 3. 渲染替补球员 (支持 Grid 布局)
         benchPlayers.forEach(player => {
             const card = document.createElement('div');
             const displayTotal = Math.floor(player.totalSeconds / 60);
@@ -611,6 +668,7 @@
         gameClockSeconds += diff;
         applyTimeAdjustment(-diff); 
         updateClockDisplay();
+        saveState(); // AUTO SAVE
     }
 
     function syncClockManual() {
@@ -628,6 +686,7 @@
                     if (diff !== 0) applyTimeAdjustment(diff);
                     gameClockSeconds = newTime;
                     updateClockDisplay();
+                    saveState(); // AUTO SAVE
                 }
             }
         }
@@ -654,6 +713,7 @@
             if (newFouls >= 0) {
                 player.fouls = newFouls;
                 renderPlayers(); 
+                saveState(); // AUTO SAVE
             }
         }
     }
@@ -685,6 +745,7 @@
             document.getElementById('gameStatusLabel').className = "text-[10px] font-bold text-yellow-400 uppercase tracking-widest";
             stopTicker();
         }
+        saveState(); // AUTO SAVE
     }
 
     function handlePlayerClick(id) {
@@ -694,21 +755,22 @@
         if (gameState === "SETUP") {
             player.isOnCourt = !player.isOnCourt;
             renderPlayers(); 
+            saveState(); // AUTO SAVE
             return;
         }
         if (player.isOnCourt) {
             player.isOnCourt = false;
             player.currentStint = 0; 
         } else {
-            // V19 修复: 自动关闭替补侧边栏 (移动端)
             if (window.innerWidth < 768 && isBenchOpen) {
-                toggleBench(); // 选人后自动收起
+                toggleBench(); 
             }
             if (count >= 5) { alert("Max 5 players! Sub someone OUT first."); return; }
             player.isOnCourt = true;
             player.currentStint = 0; 
         }
         renderPlayers(); 
+        saveState(); // AUTO SAVE
     }
 
     function startTicker() {
@@ -737,6 +799,8 @@
                     if (p.currentStint === 240) triggerAlert(p.id, "alert-level-3");
                 }
             });
+            // 每秒保存一次，虽然稍微频繁，但在这种轻量级应用中是可以接受的
+            saveState(); 
         }, 1000);
     }
 
@@ -782,10 +846,15 @@
         const btn = document.getElementById('mainActionBtn');
         btn.innerText = "START 2ND HALF";
         btn.className = "flex-1 bg-[#002f6c] text-white py-2 rounded font-bold text-base shadow-sm hover:bg-[#003d8c] active:bg-[#001f4c] transition-colors border-b-4 border-[#001f4c] active:border-b-0 active:translate-y-1";
+        saveState(); // AUTO SAVE
     }
 
     function fullReset() {
-        if(confirm("New Game?")) resetToDefaults();
+        if(confirm("New Game? This will clear all saved data.")) {
+            // 清除本地存储
+            localStorage.removeItem(STORAGE_KEY);
+            resetToDefaults();
+        }
     }
 
     init();
