@@ -54,6 +54,14 @@ function extractChatCompletionText(payload) {
   return payload?.choices?.[0]?.message?.content?.trim() || ""
 }
 
+function cleanLlmConfig(config = {}) {
+  return Object.fromEntries(
+    Object.entries(config)
+      .filter(([, value]) => typeof value === "string" && value.trim())
+      .map(([key, value]) => [key, value.trim()]),
+  )
+}
+
 export async function generatePracticeReport(
   players,
   supplementalNotes,
@@ -62,7 +70,7 @@ export async function generatePracticeReport(
   const fetchImpl = options.fetchImpl || fetch
   const llm = {
     ...defaultLlmConfig,
-    ...(options.llm || {}),
+    ...cleanLlmConfig(options.llm),
   }
 
   if (!players.length) {
