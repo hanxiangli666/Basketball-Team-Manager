@@ -154,6 +154,50 @@ test("createApiHandler returns a downloadable practice report", async () => {
   assert.equal(await response.text(), "Practice report text")
 })
 
+test("createApiHandler keeps default LLM base URL and model when env values are missing", async () => {
+  const handler = createApiHandler(
+    {
+      getPlayersWithPractice: async () => [
+        {
+          id: 1,
+          name: "Eli",
+          number: 1,
+          pos: "G",
+          practiceTotal: 5,
+          practiceStats: {},
+        },
+      ],
+    },
+    {
+      llm: {
+        apiKey: "test-key",
+        baseUrl: undefined,
+        model: undefined,
+      },
+      fetchImpl: async (url, init) => {
+        assert.equal(url, "https://api.openai.com/v1/chat/completions")
+        assert.equal(JSON.parse(init.body).model, "gpt-4o-mini")
+        return Response.json({
+          choices: [{ message: { content: "Default config report" } }],
+        })
+      },
+    },
+  )
+
+  const response = await handler(
+    new Request("https://tracker.example/api/practice/report", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ notes: "" }),
+    }),
+  )
+
+  assert.equal(response.status, 200)
+  assert.equal(await response.text(), "Default config report")
+})
+
 test("syncRosterFromSource refuses empty roster parses before mutating players", async () => {
   const writes = []
   const db = {
