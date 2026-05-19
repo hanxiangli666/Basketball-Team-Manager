@@ -55,6 +55,51 @@ test("createApiHandler returns FastAPI-style errors for invalid routes and paylo
   assert.deepEqual(await badJson.json(), { detail: "Invalid JSON payload" })
 })
 
+test("createApiHandler serves injury state endpoints under /api", async () => {
+  const calls = []
+  const snapshot = { players: [], injuredPlayerIds: [4] }
+  const handler = createApiHandler({
+    getInjuriesSnapshot: async () => snapshot,
+    addInjuredPlayer: async (playerId) => {
+      calls.push(["add", playerId])
+      return { players: [], injuredPlayerIds: [4, playerId] }
+    },
+    removeInjuredPlayer: async (playerId) => {
+      calls.push(["remove", playerId])
+      return { players: [], injuredPlayerIds: [] }
+    },
+    clearInjuredPlayers: async () => {
+      calls.push(["clear"])
+      return { players: [], injuredPlayerIds: [] }
+    },
+  })
+
+  const getResponse = await handler(
+    new Request("https://tracker.example/api/injuries", { method: "GET" }),
+  )
+  assert.equal(getResponse.status, 200)
+  assert.deepEqual(await getResponse.json(), snapshot)
+
+  const addResponse = await handler(
+    new Request("https://tracker.example/api/injuries/players/7", { method: "POST" }),
+  )
+  assert.equal(addResponse.status, 200)
+  assert.deepEqual(await addResponse.json(), { players: [], injuredPlayerIds: [4, 7] })
+
+  const removeResponse = await handler(
+    new Request("https://tracker.example/api/injuries/players/7", { method: "DELETE" }),
+  )
+  assert.equal(removeResponse.status, 200)
+  assert.deepEqual(await removeResponse.json(), { players: [], injuredPlayerIds: [] })
+
+  const clearResponse = await handler(
+    new Request("https://tracker.example/api/injuries/reset", { method: "POST" }),
+  )
+  assert.equal(clearResponse.status, 200)
+  assert.deepEqual(await clearResponse.json(), { players: [], injuredPlayerIds: [] })
+  assert.deepEqual(calls, [["add", 7], ["remove", 7], ["clear"]])
+})
+
 test("createApiHandler keeps admin endpoints closed when ADMIN_TOKEN is not configured", async () => {
   const handler = createApiHandler({
     getRosterReview: async () => ({ players: [] }),

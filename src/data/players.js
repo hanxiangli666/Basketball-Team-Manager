@@ -7,7 +7,7 @@ export const practiceCategories = [
   { key: "stl", label: "STL", title: "Steals" },
   { key: "defl", label: "DEF", title: "Deflections" },
   { key: "dReb", label: "DRB", title: "Defensive Rebounds" },
-  { key: "oReb", label: "ZHX", title: "Offensive Rebounds" },
+  { key: "oReb", label: "ORB", title: "Offensive Rebounds" },
 ]
 
 export function createEmptyPracticeStats() {

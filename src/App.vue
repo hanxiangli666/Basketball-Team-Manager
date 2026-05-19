@@ -9,6 +9,7 @@ import LandingView from "./components/LandingView.vue"
 import PracticeView from "./components/PracticeView.vue"
 import GameView from "./components/GameView.vue"
 import AdminReviewView from "./components/AdminReviewView.vue"
+import InjuriesView from "./components/InjuriesView.vue"
 
 const currentView = ref("landing")
 const players = ref([])
@@ -28,6 +29,9 @@ const practiceSyncError = ref("")
 const isGameSyncing = ref(false)
 const gameSyncError = ref("")
 const latestGameRequestId = ref(0)
+const injuredPlayerIds = ref([])
+const isInjuriesSyncing = ref(false)
+const injuriesSyncError = ref("")
 const isGeneratingPracticeReport = ref(false)
 const practiceReportError = ref("")
 const practiceSortMode = ref("default")
@@ -98,6 +102,13 @@ function applyGameSnapshot(snapshot, options = {}) {
   gameState.value = snapshot.gameState ?? "SETUP"
   gameStatusText.value = snapshot.gameStatusText ?? null
   gameMainButtonText.value = snapshot.gameMainButtonText ?? null
+}
+
+function applyInjuriesSnapshot(snapshot) {
+  players.value = buildPlayersFromBackend(snapshot.players || [], {
+    preserveCurrentOrder: true,
+  })
+  injuredPlayerIds.value = snapshot.injuredPlayerIds || []
 }
 
 async function fetchBackendData(endpoint) {
@@ -315,6 +326,48 @@ async function resetPractice() {
   }
 }
 
+async function syncInjuriesState({ silent = false } = {}) {
+  if (isInjuriesSyncing.value) {
+    return
+  }
+
+  try {
+    isInjuriesSyncing.value = true
+    applyInjuriesSnapshot(await fetchBackendData("/injuries"))
+    injuriesSyncError.value = ""
+  } catch (error) {
+    console.error("Injuries sync failed:", error)
+    injuriesSyncError.value = "Injury sync paused. Retrying..."
+
+    if (!silent) {
+      throw error
+    }
+  } finally {
+    isInjuriesSyncing.value = false
+  }
+}
+
+async function sendInjuriesCommand(endpoint, { method = "POST" } = {}) {
+  try {
+    isInjuriesSyncing.value = true
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, { method })
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => null)
+      const detail = errorPayload?.detail || `Failed to save ${endpoint}: ${response.status}`
+      throw new Error(detail)
+    }
+
+    applyInjuriesSnapshot(await response.json())
+    injuriesSyncError.value = ""
+  } catch (error) {
+    console.error("Injuries command failed:", error)
+    injuriesSyncError.value = error.message || "Could not save injury changes."
+  } finally {
+    isInjuriesSyncing.value = false
+  }
+}
+
 async function generatePracticeReport(notes) {
   try {
     isGeneratingPracticeReport.value = true
@@ -403,6 +456,10 @@ watch(currentView, async (view) => {
   } else {
     stopGameSync()
   }
+
+  if (view === "injuries" && !isInitializing.value && !initializationError.value) {
+    await syncInjuriesState({ silent: true })
+  }
 })
 
 function togglePlayerOnCourt(playerId) {
@@ -449,6 +506,18 @@ function resetGameSetup() {
   if (!confirmed) return
 
   sendGameCommand("/game/reset")
+}
+
+function addInjuredPlayer(playerId) {
+  sendInjuriesCommand(`/injuries/players/${playerId}`)
+}
+
+function removeInjuredPlayer(playerId) {
+  sendInjuriesCommand(`/injuries/players/${playerId}`, { method: "DELETE" })
+}
+
+function clearInjuredPlayers() {
+  sendInjuriesCommand("/injuries/reset")
 }
 
 onMounted(() => {
@@ -505,6 +574,18 @@ onBeforeUnmount(() => {
     v-else-if="currentView === 'admin'"
     :api-base-url="API_BASE_URL"
     @switch-view="switchView"
+  />
+
+  <InjuriesView
+    v-else-if="currentView === 'injuries'"
+    :players="players"
+    :injured-player-ids="injuredPlayerIds"
+    :is-syncing="isInjuriesSyncing"
+    :sync-error="injuriesSyncError"
+    @switch-view="switchView"
+    @add-injured-player="addInjuredPlayer"
+    @remove-injured-player="removeInjuredPlayer"
+    @clear-injured-players="clearInjuredPlayers"
   />
 
   <PracticeView

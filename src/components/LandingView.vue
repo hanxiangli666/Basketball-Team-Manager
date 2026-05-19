@@ -22,10 +22,10 @@ const emit = defineEmits(["switch-view"])
         <span class="text-green-400">Tracker Pro</span>
       </h1>
 
-      <div class="flex flex-col sm:flex-row gap-6 w-full max-w-3xl">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full max-w-5xl">
         <button
           @click="emit('switch-view', 'practice')"
-          class="flex-1 group bg-white/10 backdrop-blur-md border border-white/30 hover:bg-white/20 text-white py-10 rounded-xl shadow-2xl relative overflow-hidden transition-all active:scale-95"
+          class="group bg-white/10 backdrop-blur-md border border-white/30 hover:bg-white/20 text-white py-10 rounded-xl shadow-2xl relative overflow-hidden transition-all active:scale-95"
         >
           <div class="relative z-10 flex flex-col items-center">
             <span class="text-xs font-bold text-gray-300 uppercase tracking-widest mb-2 group-hover:text-white transition-colors">
@@ -39,7 +39,7 @@ const emit = defineEmits(["switch-view"])
 
         <button
           @click="emit('switch-view', 'game')"
-          class="flex-1 group bg-[#144935] border border-green-500 hover:bg-[#0e3325] text-white py-10 rounded-xl shadow-2xl relative overflow-hidden transition-all active:scale-95"
+          class="group bg-[#144935] border border-green-500 hover:bg-[#0e3325] text-white py-10 rounded-xl shadow-2xl relative overflow-hidden transition-all active:scale-95"
         >
           <div class="relative z-10 flex flex-col items-center">
             <span class="text-xs font-bold text-green-300 uppercase tracking-widest mb-2 group-hover:text-white transition-colors">
@@ -47,6 +47,20 @@ const emit = defineEmits(["switch-view"])
             </span>
             <span class="text-4xl font-black italic uppercase tracking-tight">
               Game
+            </span>
+          </div>
+        </button>
+
+        <button
+          @click="emit('switch-view', 'injuries')"
+          class="group bg-[#7f1d1d]/80 border border-red-400/70 hover:bg-[#681616] text-white py-10 rounded-xl shadow-2xl relative overflow-hidden transition-all active:scale-95"
+        >
+          <div class="relative z-10 flex flex-col items-center">
+            <span class="text-xs font-bold text-red-200 uppercase tracking-widest mb-2 group-hover:text-white transition-colors">
+              Health
+            </span>
+            <span class="text-4xl font-black italic uppercase tracking-tight">
+              Injuries
             </span>
           </div>
         </button>

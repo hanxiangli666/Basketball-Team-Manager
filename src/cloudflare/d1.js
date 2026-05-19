@@ -587,6 +587,57 @@ export function createD1Services(db, options = {}) {
     return getGameSnapshot()
   }
 
+  async function getInjuriesSnapshot() {
+    const rows = await all(
+      db,
+      `
+        SELECT ip.player_id AS playerId
+        FROM injured_players ip
+        JOIN players p ON p.id = ip.player_id
+        WHERE p.active = 1
+        ORDER BY p.id
+      `,
+    )
+
+    return {
+      players: await selectActivePlayers(db),
+      injuredPlayerIds: rows.map((row) => row.playerId),
+    }
+  }
+
+  async function addInjuredPlayer(playerId) {
+    const player = await first(
+      db,
+      "SELECT id FROM players WHERE id = ? AND active = 1",
+      [playerId],
+    )
+    if (!player) {
+      throw new Error(`Player ${playerId} not found`)
+    }
+
+    await run(
+      db,
+      `
+        INSERT INTO injured_players (player_id, created_at, updated_at)
+        VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(player_id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+      `,
+      [playerId],
+    )
+
+    return getInjuriesSnapshot()
+  }
+
+  async function removeInjuredPlayer(playerId) {
+    await run(db, "DELETE FROM injured_players WHERE player_id = ?", [playerId])
+    return getInjuriesSnapshot()
+  }
+
+  async function clearInjuredPlayers() {
+    await run(db, "DELETE FROM injured_players")
+    return getInjuriesSnapshot()
+  }
+
   async function getRosterReview() {
     const players = await all(
       db,
@@ -687,6 +738,10 @@ export function createD1Services(db, options = {}) {
     syncGameClockSeconds,
     adjustGameClockSeconds,
     resetGameHalf,
+    getInjuriesSnapshot,
+    addInjuredPlayer,
+    removeInjuredPlayer,
+    clearInjuredPlayers,
     getRosterReview,
     reviewRosterPlayer,
     syncRosterFromSource,

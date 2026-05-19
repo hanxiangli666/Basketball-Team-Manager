@@ -134,6 +134,23 @@ export function createApiHandler(services, options = {}) {
         return json(await services.resetGameHalf())
       }
 
+      if (method === "GET" && path === "/injuries") {
+        return json(await services.getInjuriesSnapshot())
+      }
+
+      const injuryMatch = /^\/injuries\/players\/(\d+)$/.exec(path)
+      if (method === "POST" && injuryMatch) {
+        return json(await services.addInjuredPlayer(Number(injuryMatch[1])))
+      }
+
+      if (method === "DELETE" && injuryMatch) {
+        return json(await services.removeInjuredPlayer(Number(injuryMatch[1])))
+      }
+
+      if (method === "POST" && path === "/injuries/reset") {
+        return json(await services.clearInjuredPlayers())
+      }
+
       if (method === "GET" && path === "/admin/roster-review") {
         ensureAdmin(request, adminToken)
         return json(await services.getRosterReview())
