@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import {
   createEmptyPracticeStats,
   createPlayerState,
@@ -35,6 +35,11 @@ const injuriesSyncError = ref("")
 const isGeneratingPracticeReport = ref(false)
 const practiceReportError = ref("")
 const practiceSortMode = ref("default")
+
+const injuredIdSet = computed(() => new Set(injuredPlayerIds.value))
+const availablePlayers = computed(() =>
+  players.value.filter((player) => !injuredIdSet.value.has(player.id)),
+)
 
 function calculatePracticeTotal(practiceStats) {
   return practiceCategories.reduce(
@@ -393,7 +398,7 @@ async function generatePracticeReport(notes) {
     const contentDisposition = response.headers.get("Content-Disposition") || ""
     const filenameMatch = /filename="([^"]+)"/.exec(contentDisposition)
     const filename =
-      filenameMatch?.[1] || `practice-report-${new Date().toISOString().slice(0, 10)}.txt`
+      filenameMatch?.[1] || `practice-report-${new Date().toISOString().slice(0, 10)}.pdf`
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
 
@@ -414,7 +419,7 @@ async function generatePracticeReport(notes) {
 function exportGameData() {
   const rows = [
     ["Name", "Number", "Minutes", "Fouls"],
-    ...players.value.map((player) => [
+    ...availablePlayers.value.map((player) => [
       player.name,
       player.number,
       (player.totalSeconds / 60).toFixed(1),
@@ -444,6 +449,7 @@ function exportGameData() {
 
 watch(currentView, async (view) => {
   if (view === "practice" && !isInitializing.value && !initializationError.value) {
+    await syncInjuriesState({ silent: true })
     await syncPracticeState({ silent: true })
     startPracticeSync()
   } else {
@@ -451,6 +457,7 @@ watch(currentView, async (view) => {
   }
 
   if (view === "game" && !isInitializing.value && !initializationError.value) {
+    await syncInjuriesState({ silent: true })
     await syncGameState({ silent: true })
     startGameSync()
   } else {
@@ -467,7 +474,7 @@ function togglePlayerOnCourt(playerId) {
 }
 
 function handleMainAction() {
-  const onCourtCount = players.value.filter((player) => player.isOnCourt).length
+  const onCourtCount = availablePlayers.value.filter((player) => player.isOnCourt).length
 
   if (gameState.value === "SETUP" && onCourtCount !== 5) {
     const confirmed = window.confirm(`Starts with ${onCourtCount} players. Continue?`)
@@ -590,7 +597,7 @@ onBeforeUnmount(() => {
 
   <PracticeView
     v-else-if="currentView === 'practice'"
-    :players="players"
+    :players="availablePlayers"
     :sort-mode="practiceSortMode"
     :is-syncing="isPracticeSyncing"
     :sync-error="practiceSyncError"
@@ -605,7 +612,7 @@ onBeforeUnmount(() => {
 
   <GameView
     v-else-if="currentView === 'game'"
-    :players="players"
+    :players="availablePlayers"
     :game-clock-seconds="gameClockSeconds"
     :game-state="gameState"
     :status-text-override="gameStatusText"

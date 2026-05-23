@@ -3,6 +3,7 @@ import test from "node:test"
 
 import { createApiHandler } from "../../src/cloudflare/api.js"
 import { createD1Services } from "../../src/cloudflare/d1.js"
+import { createTextPdf } from "../../src/cloudflare/pdf.js"
 import { buildPracticeReportPrompt } from "../../src/cloudflare/practice-report.js"
 
 test("createApiHandler serves existing game endpoints under /api", async () => {
@@ -143,7 +144,13 @@ test("buildPracticeReportPrompt includes player stats and supplemental notes", (
   assert.match(prompt, /Additional coach notes: Highlight his vocal leadership\./)
 })
 
-test("createApiHandler returns a downloadable practice report", async () => {
+test("createTextPdf returns PDF bytes for report text", () => {
+  const pdf = createTextPdf("Practice report text")
+  assert.equal(new TextDecoder().decode(pdf.slice(0, 8)), "%PDF-1.4")
+  assert.match(new TextDecoder().decode(pdf), /Practice report text/)
+})
+
+test("createApiHandler returns a downloadable practice report PDF", async () => {
   const handler = createApiHandler(
     {
       getPlayersWithPractice: async () => [
@@ -194,9 +201,11 @@ test("createApiHandler returns a downloadable practice report", async () => {
   )
 
   assert.equal(response.status, 200)
-  assert.equal(response.headers.get("Content-Type"), "text/plain; charset=utf-8")
-  assert.match(response.headers.get("Content-Disposition"), /attachment; filename=/)
-  assert.equal(await response.text(), "Practice report text")
+  assert.equal(response.headers.get("Content-Type"), "application/pdf")
+  assert.match(response.headers.get("Content-Disposition"), /attachment; filename="practice-report-\d{4}-\d{2}-\d{2}\.pdf"/)
+  const pdf = new TextDecoder().decode(await response.arrayBuffer())
+  assert.match(pdf, /^%PDF-1\.4/)
+  assert.match(pdf, /Practice report text/)
 })
 
 test("createApiHandler keeps default LLM base URL and model when env values are missing", async () => {
@@ -240,7 +249,8 @@ test("createApiHandler keeps default LLM base URL and model when env values are 
   )
 
   assert.equal(response.status, 200)
-  assert.equal(await response.text(), "Default config report")
+  assert.equal(response.headers.get("Content-Type"), "application/pdf")
+  assert.match(new TextDecoder().decode(await response.arrayBuffer()), /Default config report/)
 })
 
 test("syncRosterFromSource refuses empty roster parses before mutating players", async () => {

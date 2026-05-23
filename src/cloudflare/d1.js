@@ -625,6 +625,21 @@ export function createD1Services(db, options = {}) {
       [playerId],
     )
 
+    await run(
+      db,
+      `
+        UPDATE game_player_state
+        SET
+          is_on_court = 0,
+          current_stint = 0,
+          last_sub_out_clock = NULL,
+          sub_out_game_clock = NULL,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE player_id = ?
+      `,
+      [playerId],
+    )
+
     return getInjuriesSnapshot()
   }
 

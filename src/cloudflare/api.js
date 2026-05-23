@@ -1,4 +1,5 @@
 import { generatePracticeReport } from "./practice-report.js"
+import { createTextPdf } from "./pdf.js"
 
 function json(payload, status = 200) {
   return Response.json(payload, {
@@ -9,12 +10,12 @@ function json(payload, status = 200) {
   })
 }
 
-function textAttachment(content, filename, status = 200) {
+function pdfAttachment(content, filename, status = 200) {
   return new Response(content, {
     status,
     headers: {
       "Cache-Control": "no-store",
-      "Content-Type": "text/plain; charset=utf-8",
+      "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="${filename}"`,
     },
   })
@@ -89,7 +90,7 @@ export function createApiHandler(services, options = {}) {
           llm,
         })
         const reportDate = new Date().toISOString().slice(0, 10)
-        return textAttachment(report, `practice-report-${reportDate}.txt`)
+        return pdfAttachment(createTextPdf(report), `practice-report-${reportDate}.pdf`)
       }
 
       if (method === "GET" && path === "/game") {
