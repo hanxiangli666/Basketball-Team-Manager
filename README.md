@@ -86,8 +86,9 @@ https://drewrangers.com/sports/mens-basketball/roster
 
 - D1：`drew-tracker`
 - D1 `database_id`：`81030d5c-1a75-4e90-9f33-d808066134f3`
-- Pages project：`drew-tracker`（已创建，等待首次 Pages 部署）
-- Pages preview domain：`drew-tracker.pages.dev`（首次部署后可访问）
+- Pages project：`drew-tracker-github`
+- 正式域名：`https://drew-mbb.com`、`https://www.drew-mbb.com`
+- Pages preview domain：`drew-tracker-github.pages.dev`
 - Roster sync Worker：`drew-tracker-roster-sync`
 - Worker URL：`https://drew-tracker-roster-sync.hanxiangli666.workers.dev/sync`
 - Cron：每周一 10:00 UTC
@@ -117,7 +118,7 @@ npx wrangler d1 migrations apply drew-tracker --remote
 4. 设置 Admin token：
 
 ```powershell
-npx wrangler pages secret put ADMIN_TOKEN --project-name drew-tracker
+npx wrangler pages secret put ADMIN_TOKEN --project-name drew-tracker-github
 npx wrangler secret put ADMIN_TOKEN --config wrangler.roster-sync.toml
 ```
 
@@ -126,7 +127,7 @@ npx wrangler secret put ADMIN_TOKEN --config wrangler.roster-sync.toml
 ```powershell
 npm install
 npm run build
-npx wrangler pages deploy dist --project-name drew-tracker
+npx wrangler pages deploy dist --project-name drew-tracker-github
 ```
 
 6. 部署 roster sync Worker：
@@ -135,7 +136,7 @@ npx wrangler pages deploy dist --project-name drew-tracker
 npx wrangler deploy --config wrangler.roster-sync.toml
 ```
 
-买好域名后，在 Cloudflare Pages 项目的 Custom domains 里绑定域名即可。
+正式入口使用 `https://drew-mbb.com`。`pages.dev` 域名只作为 Cloudflare Pages 的预览域名保留。
 
 ## 本地开发
 
