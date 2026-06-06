@@ -1,176 +1,111 @@
 # Basketball Team Manager
 
-篮球队训练和比赛管理工具。当前代码已经准备好从本地 FastAPI 版本迁到 Cloudflare：前端部署到 Cloudflare Pages，线上 API 使用 Pages Functions，数据存到 Cloudflare D1，官网 roster 同步由独立 Worker Cron 定时执行。
+A production-oriented operations tool for Drew men's basketball. The app helps coaches and staff manage practice stats, game rotations, injuries, roster review, and reporting from one lightweight web interface.
 
-应用包含四个视图：
+Live site: [drew-mbb.com](https://drew-mbb.com)
 
-- Landing：主菜单，进入训练、比赛或管理页面。
-- Practice：记录训练数据，并按照总分或单项数据查看排行榜。
-- Game：管理比赛轮换、计时、犯规、出场时间，并支持导出 CSV。
-- Admin：同步 Drew 官网 roster，并审核新球员的位置、启用状态和本地图片路径。
+## Problem
 
-## 技术栈
+Team operations often happen across spreadsheets, manual notes, and ad-hoc game-day decisions. This project turns that workflow into a deployable web app with persistent data, admin review, scheduled roster sync, and test-covered game logic.
 
-- Frontend：Vue 3、Vite、Tailwind CSS
-- Cloudflare API：Pages Functions
-- Cloudflare database：D1
-- Cloudflare automation：Worker Cron Trigger
-- Legacy local backend：FastAPI、SQLite
-- Assets：`public/Background.jpg` 和 `public/Photos/`
+## What It Includes
 
-## 项目结构
+- **Landing view:** main navigation into practice, game, injuries, and admin workflows.
+- **Practice view:** player practice stats, ranking views, resets, and PDF practice report generation.
+- **Game view:** on-court rotation control, game clock state, fouls, half resets, player toggles, and CSV-style operational data.
+- **Injuries view:** tracks unavailable players and keeps game/practice workflows aligned.
+- **Admin review:** syncs Drew roster data, reviews new players, manages positions, active status, and image paths.
+- **Roster automation:** a standalone Cloudflare Worker Cron periodically syncs roster data from the source site.
+
+## Architecture
 
 ```text
-.
-├── backend/                 # 旧本地 FastAPI + SQLite 后端，仍可参考
-├── functions/api/[[path]].js # Cloudflare Pages Functions API 入口
-├── migrations/              # D1 schema 和初始 seed 数据
-├── public/
-│   ├── _routes.json         # 只让 /api/* 命中 Pages Functions
-│   ├── Background.jpg
-│   ├── icon.png
-│   └── Photos/
-├── src/
-│   ├── App.vue
-│   ├── components/
-│   │   ├── AdminReviewView.vue
-│   │   ├── GameView.vue
-│   │   ├── LandingView.vue
-│   │   └── PracticeView.vue
-│   ├── cloudflare/          # D1 service、API router、roster parser、game logic
-│   └── data/
-├── tests/cloudflare/        # Node test runner 覆盖 Cloudflare 业务逻辑
-├── workers/roster-sync.js   # 独立定时 roster 同步 Worker
-├── wrangler.toml            # Pages + D1 配置
-└── wrangler.roster-sync.toml # roster sync Worker + cron 配置
+Vue 3 / Vite frontend
+        |
+        v
+Cloudflare Pages Functions API
+        |
+        v
+Cloudflare D1 database
+
+Worker Cron -> roster sync service -> D1
 ```
 
-## 线上架构
+## Tech Stack
 
-前端默认调用同域 API：
+- **Frontend:** Vue 3, Vite, Tailwind CSS
+- **API:** Cloudflare Pages Functions
+- **Database:** Cloudflare D1
+- **Automation:** Cloudflare Worker Cron Trigger
+- **Testing:** Node test runner for API, roster parsing, and game-state logic
+- **Reporting:** text-to-PDF practice report generator
 
-```js
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api"
+## Repository Map
+
+```text
+functions/api/[[path]].js       Cloudflare Pages Functions entrypoint
+migrations/                     D1 schema and seed data
+src/components/                 Practice, game, injuries, landing, admin views
+src/cloudflare/api.js           API router
+src/cloudflare/d1.js            D1 service layer
+src/cloudflare/game-state.js    Rotation and clock business logic
+src/cloudflare/roster.js        Roster fetch, parse, and diff logic
+tests/cloudflare/               Node tests
+workers/roster-sync.js          Scheduled roster sync worker
+wrangler.toml                   Pages + D1 config
+wrangler.roster-sync.toml       Worker Cron config
 ```
 
-Cloudflare Pages 负责托管 `dist/` 静态资源。`functions/api/[[path]].js` 接收 `/api/*` 请求，并通过 `src/cloudflare/api.js` 保持现有接口语义，例如：
+## API Surface
 
+Representative endpoints:
+
+- `GET /api/players`
 - `GET /api/practice`
 - `POST /api/practice/{player_id}`
+- `POST /api/practice/report`
 - `GET /api/game`
 - `POST /api/game/main-action`
 - `POST /api/game/players/{player_id}/toggle`
+- `GET /api/injuries`
 - `GET /api/admin/roster-review`
-- `POST /api/admin/roster-sync`
 
-D1 数据访问集中在 `src/cloudflare/d1.js`。比赛计时仍由后端事实来源推进：读取或修改 game snapshot 时，会根据 `last_started_at` 推进比赛时钟和场上球员出场时间。
+Admin endpoints require an `x-admin-token` header.
 
-## Roster 自动同步
-
-`workers/roster-sync.js` 每周一 10:00 UTC 执行一次，抓取：
-
-```text
-https://drewrangers.com/sports/mens-basketball/roster
-```
-
-同步策略：
-
-- 新球员插入 `players`，默认 `active = 1`、`needs_review = 1`。
-- 官网位置只有 `G/F/C`，会保守映射为 `SG/PF/C`，然后在 Admin 页面确认。
-- 官网不再出现的球员不会删除，只标记 `active = 0`、`needs_review = 1`。
-- 图片默认不自动下载；保存官网 `image_url`，本地展示仍使用 `img` 字段，例如 `/Photos/Eli.png` 或 `/icon.png`。
-
-## Cloudflare 部署准备
-
-当前 Cloudflare 资源已经建好：
-
-- D1：`drew-tracker`
-- D1 `database_id`：`81030d5c-1a75-4e90-9f33-d808066134f3`
-- Pages project：`drew-tracker-github`
-- 正式域名：`https://drew-mbb.com`、`https://www.drew-mbb.com`
-- Pages preview domain：`drew-tracker-github.pages.dev`
-- Roster sync Worker：`drew-tracker-roster-sync`
-- Worker URL：`https://drew-tracker-roster-sync.hanxiangli666.workers.dev/sync`
-- Cron：每周一 10:00 UTC
-- `ADMIN_TOKEN`：已作为 Cloudflare secret 配置，不写入仓库
-
-如果换 Cloudflare 账号或重新创建环境，再执行下面步骤。
-
-1. 创建 D1 数据库：
-
-```powershell
-npx wrangler d1 create drew-tracker
-```
-
-2. 把输出的 `database_id` 填入：
-
-```text
-wrangler.toml
-wrangler.roster-sync.toml
-```
-
-3. 应用 D1 migration：
-
-```powershell
-npx wrangler d1 migrations apply drew-tracker --remote
-```
-
-4. 设置 Admin token：
-
-```powershell
-npx wrangler pages secret put ADMIN_TOKEN --project-name drew-tracker-github
-npx wrangler secret put ADMIN_TOKEN --config wrangler.roster-sync.toml
-```
-
-5. 构建并部署 Pages：
-
-```powershell
-npm install
-npm run build
-npx wrangler pages deploy dist --project-name drew-tracker-github
-```
-
-6. 部署 roster sync Worker：
-
-```powershell
-npx wrangler deploy --config wrangler.roster-sync.toml
-```
-
-正式入口使用 `https://drew-mbb.com`。`pages.dev` 域名只作为 Cloudflare Pages 的预览域名保留。
-
-## 本地开发
-
-普通前端开发：
+## Run Locally
 
 ```powershell
 npm install
 npm run dev
 ```
 
-如果要继续使用旧 FastAPI 后端调试，可以显式指定：
-
-```powershell
-$env:VITE_API_BASE_URL="http://localhost:8000"
-npm run dev
-```
-
-旧后端启动：
-
-```powershell
-cd backend
-.\venv\Scripts\Activate.ps1
-uvicorn main:app --reload
-```
-
-## 验证
+Run tests:
 
 ```powershell
 npm test
+```
+
+Build:
+
+```powershell
 npm run build
 ```
 
-## 开发注意事项
+## Deployment Notes
 
-- 新增训练统计项时，要同步更新前端 `src/data/players.js`、Cloudflare 常量和 D1 migration。
-- 新增本地球员照片时，把图片放到 `public/Photos/`，并在 Admin 页面把 `img` 改成对应路径。
-- `backend/` 是旧本地实现；线上部署以 `functions/`、`workers/`、`src/cloudflare/` 和 `migrations/` 为准。
+The production Cloudflare Pages project is `drew-tracker-github`.
+
+The public domains are:
+
+- `https://drew-mbb.com`
+- `https://www.drew-mbb.com`
+
+Before deploying, verify Cloudflare auth and D1 bindings. Do not commit `.dev.vars` or real admin tokens.
+
+## What This Project Demonstrates
+
+- Turning a real sports workflow into a full-stack product.
+- Designing a serverless API with Cloudflare Pages Functions and D1.
+- Keeping game-state business logic testable outside the UI.
+- Adding operational automation through Worker Cron.
+- Writing documentation that maps product flows to implementation evidence.
