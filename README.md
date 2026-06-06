@@ -2,7 +2,7 @@
 
 A production-oriented operations tool for Drew men's basketball. The app helps coaches and staff manage practice stats, game rotations, injuries, roster review, and reporting from one lightweight web interface.
 
-Live site: [drew-mbb.com](https://drew-mbb.com)
+Deployment is currently in private testing.
 
 ## Problem
 
@@ -94,11 +94,6 @@ npm run build
 ## Deployment Notes
 
 The production Cloudflare Pages project is `drew-tracker-github`.
-
-The public domains are:
-
-- `https://drew-mbb.com`
-- `https://www.drew-mbb.com`
 
 Before deploying, verify Cloudflare auth and D1 bindings. Do not commit `.dev.vars` or real admin tokens.
 
