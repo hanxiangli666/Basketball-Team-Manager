@@ -115,8 +115,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-100 text-slate-900 flex flex-col">
-    <header class="bg-[#144935] text-white px-4 py-3 shadow-md flex items-center justify-between gap-3">
+  <div class="min-h-[100dvh] bg-slate-100 text-slate-900 flex flex-col">
+    <header class="sticky top-0 z-30 bg-[#144935] text-white px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 shadow-md flex items-center justify-between gap-3">
       <div class="flex items-center gap-3">
         <button
           class="text-green-200 hover:text-white font-bold text-sm uppercase tracking-wider"
@@ -143,7 +143,7 @@ onMounted(() => {
       </button>
     </header>
 
-    <main class="flex-1 overflow-y-auto p-4 space-y-4">
+    <main class="flex-1 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-4">
       <section class="bg-white border border-slate-200 rounded-lg p-3 shadow-sm">
         <div class="grid gap-2 sm:grid-cols-[1fr_auto]">
           <input

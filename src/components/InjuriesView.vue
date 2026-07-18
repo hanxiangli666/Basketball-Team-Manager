@@ -84,9 +84,9 @@ function handleBackClick() {
 </script>
 
 <template>
-  <div class="h-screen flex flex-col bg-gray-100">
-    <div class="shrink-0 shadow-xl bg-white">
-      <div class="bg-[#144935] text-white px-4 h-16 flex justify-between items-center border-b border-[#0e3325] relative">
+  <div class="min-h-[100dvh] md:h-screen flex flex-col bg-gray-100">
+    <div class="sticky top-0 z-30 md:static shrink-0 shadow-xl bg-white">
+      <div class="bg-[#144935] text-white px-4 min-h-16 pt-[env(safe-area-inset-top)] flex justify-between items-center border-b border-[#0e3325] relative">
         <div class="flex items-center gap-3 z-10">
           <button
             @click="handleBackClick"
@@ -127,8 +127,8 @@ function handleBackClick() {
       </div>
     </div>
 
-    <div class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-      <div class="w-full md:w-5/12 flex flex-col bg-gray-50 border-r border-gray-300">
+    <div class="flex-none md:flex-1 flex flex-col md:flex-row overflow-visible md:overflow-hidden relative">
+      <div class="w-full md:w-5/12 flex-none md:flex md:flex-col bg-gray-50 border-r border-gray-300">
         <div class="bg-[#7f1d1d] text-white px-4 py-2 font-extrabold text-sm tracking-wider flex justify-between items-center border-b-4 border-red-300">
           <span>INJURED PLAYERS</span>
           <span class="bg-red-900/50 text-white px-2 py-0.5 rounded text-sm">
@@ -138,7 +138,7 @@ function handleBackClick() {
 
         <div
           :class="[
-            'flex-1 p-2 overflow-y-auto flex flex-col gap-2 transition-colors',
+            'mobile-scroll flex-none md:flex-1 p-2 overflow-visible md:overflow-y-auto flex flex-col gap-2 transition-colors',
             isDropActive ? 'bg-red-50' : 'bg-gray-50'
           ]"
           @dragover.prevent="isDropActive = true"
@@ -148,7 +148,7 @@ function handleBackClick() {
           <div
             v-if="injuredPlayers.length === 0"
             :class="[
-              'min-h-64 rounded-lg border-2 border-dashed flex items-center justify-center text-center px-6 transition-colors',
+              'min-h-44 md:min-h-64 rounded-lg border-2 border-dashed flex items-center justify-center text-center px-6 transition-colors',
               isDropActive
                 ? 'border-red-500 bg-red-100 text-red-800'
                 : 'border-gray-300 bg-white text-gray-400'
@@ -156,10 +156,12 @@ function handleBackClick() {
           >
             <div>
               <div class="text-sm font-black uppercase tracking-widest">
-                Drop Injured Players Here
+                <span class="sm:hidden">No Injuries Listed</span>
+                <span class="hidden sm:inline">Drop Injured Players Here</span>
               </div>
               <div class="mt-2 text-xs font-semibold">
-                Drag a player from the roster list.
+                <span class="sm:hidden">Tap Add on a player below.</span>
+                <span class="hidden sm:inline">Drag a player from the roster list.</span>
               </div>
             </div>
           </div>
@@ -199,15 +201,16 @@ function handleBackClick() {
         </div>
       </div>
 
-      <div class="w-full md:w-7/12 flex flex-col bg-white">
+      <div class="w-full md:w-7/12 flex-none md:flex md:flex-col bg-white">
         <div class="bg-gray-100 text-gray-600 px-4 py-2 font-extrabold text-sm tracking-wider border-b border-gray-300 flex justify-between items-center h-10">
           <span>ALL PLAYERS</span>
           <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">
-            Drag to add
+            <span class="sm:hidden">Tap Add</span>
+            <span class="hidden sm:inline">Drag to add</span>
           </span>
         </div>
 
-        <div class="flex-1 p-2 overflow-y-auto">
+        <div class="mobile-scroll flex-none md:flex-1 p-2 overflow-visible md:overflow-y-auto pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
             <div
               v-for="player in availablePlayers"

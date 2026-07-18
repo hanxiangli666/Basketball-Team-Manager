@@ -130,9 +130,9 @@ watch(
 </script>
 
 <template>
-  <div class="h-screen flex flex-col bg-gray-100">
-    <div class="shrink-0 shadow-md bg-[#144935] text-white h-14 flex justify-between items-center px-4 border-b border-[#0e3325] relative">
-      <div class="flex items-center gap-4 z-10">
+  <div class="min-h-[100dvh] md:h-screen flex flex-col bg-gray-100">
+    <div class="sticky top-0 z-30 md:static shrink-0 shadow-md bg-[#144935] text-white min-h-14 flex flex-wrap md:flex-nowrap justify-between items-center px-4 pt-[max(0.5rem,env(safe-area-inset-top))] md:py-0 border-b border-[#0e3325] relative">
+      <div class="flex min-h-12 items-center gap-3 z-10">
         <button
           @click="emit('switch-view', 'landing')"
           class="flex items-center text-green-300 hover:text-white transition-colors"
@@ -140,8 +140,8 @@ watch(
           <span class="ml-1 text-xs font-bold uppercase">Menu</span>
         </button>
 
-        <div class="hidden sm:block">
-          <h1 class="text-lg font-extrabold tracking-tight leading-none">
+        <div>
+          <h1 class="text-sm sm:text-lg font-extrabold tracking-tight leading-none">
             PRACTICE MODE
           </h1>
           <div class="text-[9px] uppercase tracking-[0.24em] text-green-200 mt-0.5">
@@ -150,7 +150,7 @@ watch(
         </div>
       </div>
 
-      <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+      <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none hidden md:block">
         <img
           src="/Background.jpg"
           alt="Logo"
@@ -158,32 +158,32 @@ watch(
         />
       </div>
 
-      <div class="flex items-center gap-2 z-10">
+      <div class="w-[calc(100%+2rem)] -mx-4 px-4 py-2 md:w-auto md:mx-0 md:px-0 md:py-0 grid grid-cols-[1.5fr_0.8fr_0.8fr] md:flex items-center gap-2 z-10 bg-[#0e3325]/80 md:bg-transparent">
         <button
           @click="openReportModal"
-          class="bg-green-500 hover:bg-green-400 text-white text-xs px-3 py-1.5 rounded shadow transition-colors font-bold uppercase tracking-wider"
+          class="min-h-10 md:min-h-0 bg-green-500 hover:bg-green-400 text-white text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 rounded shadow transition-colors font-bold uppercase tracking-wide sm:tracking-wider"
         >
           Generate Report
         </button>
 
         <button
           @click="handleSort"
-          class="bg-yellow-500 hover:bg-yellow-400 text-black text-xs px-3 py-1.5 rounded shadow transition-colors font-bold uppercase tracking-wider"
+          class="min-h-10 md:min-h-0 bg-yellow-500 hover:bg-yellow-400 text-black text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 rounded shadow transition-colors font-bold uppercase tracking-wide sm:tracking-wider"
         >
           {{ sortMode === "score-desc" ? "Sorted" : "Sort" }}
         </button>
 
         <button
           @click="handleReset"
-          class="bg-red-700/80 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded shadow transition-colors font-bold uppercase tracking-wider"
+          class="min-h-10 md:min-h-0 bg-red-700/80 hover:bg-red-600 text-white text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 rounded shadow transition-colors font-bold uppercase tracking-wide sm:tracking-wider"
         >
           Reset
         </button>
       </div>
     </div>
 
-    <div class="flex-1 overflow-hidden flex flex-col p-2">
-      <div class="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 content-start pb-2">
+    <div class="flex-none md:flex-1 overflow-visible md:overflow-hidden flex flex-col p-2">
+      <div class="mobile-scroll flex-none md:flex-1 overflow-visible md:overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 content-start pb-2">
         <div
           v-for="player in players"
           :key="player.id"
@@ -194,8 +194,8 @@ watch(
               : 'border-gray-200 bg-white'
           ]"
         >
-          <div class="flex items-center gap-2 mb-1.5 border-b border-gray-100 pb-1.5">
-            <div class="relative w-8 h-10 shrink-0">
+          <div class="flex items-center gap-2 mb-2 border-b border-gray-100 pb-2">
+            <div class="relative w-10 h-12 md:w-8 md:h-10 shrink-0">
               <img
                 :src="player.img"
                 :alt="player.name"
@@ -210,10 +210,10 @@ watch(
             </div>
 
             <div class="flex-1 min-w-0">
-              <div class="text-[10px] font-bold text-gray-900 truncate">
+              <div class="text-xs md:text-[10px] font-bold text-gray-900 truncate">
                 {{ player.name }}
               </div>
-              <div class="text-[8px] text-gray-400">
+              <div class="text-[10px] md:text-[8px] text-gray-400">
                 #{{ player.number }} · {{ player.pos }}
               </div>
             </div>
@@ -234,15 +234,15 @@ watch(
             <div
               v-for="category in practiceCategories"
               :key="category.key"
-              class="flex flex-col items-center justify-center"
+              class="flex flex-col items-center justify-center gap-1"
             >
-              <span class="text-[7px] text-gray-400 font-bold uppercase leading-none mb-0.5">
+              <span class="text-[8px] md:text-[7px] text-gray-400 font-bold uppercase leading-none">
                 {{ category.label }}
               </span>
 
               <button
                 @click="handleAdd(player.id, category.key)"
-                class="w-full h-5 bg-white border border-gray-200 rounded text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-600 active:text-white transition-colors shadow-sm leading-none"
+                class="w-full h-8 md:h-5 bg-white border border-gray-200 rounded text-xs md:text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-600 active:text-white transition-colors shadow-sm leading-none"
                 :title="category.title"
               >
                 {{ player.practiceStats?.[category.key] || 0 }}
@@ -252,7 +252,7 @@ watch(
         </div>
       </div>
 
-      <div class="h-48 bg-white p-2 rounded-xl shadow-sm border border-gray-200 shrink-0 flex flex-col">
+      <div class="mt-1 md:mt-0 h-auto md:h-48 bg-white p-2 rounded-xl shadow-sm border border-gray-200 shrink-0 flex flex-col">
         <div class="flex justify-between items-center mb-1">
           <h3 class="font-bold text-gray-800 text-[10px] uppercase flex items-center gap-2">
             Stats Leaderboard
@@ -290,7 +290,7 @@ watch(
           </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto pr-1">
+        <div class="mobile-scroll flex-1 overflow-visible md:overflow-y-auto pr-1">
           <div
             v-if="sortedChartPlayers.length"
             class="grid gap-1.5"
@@ -340,9 +340,9 @@ watch(
 
     <div
       v-if="isReportModalOpen"
-      class="fixed inset-0 z-40 flex items-center justify-center bg-[#07110c]/70 px-4"
+      class="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-[#07110c]/70 px-4 py-[max(1rem,env(safe-area-inset-top))]"
     >
-      <div class="w-full max-w-xl overflow-hidden rounded-2xl border border-[#2c6b4f] bg-[#f3fbf5] shadow-2xl">
+      <div class="w-full max-w-xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-[#2c6b4f] bg-[#f3fbf5] shadow-2xl">
         <div class="bg-[#144935] px-5 py-4 text-white">
           <div class="text-lg font-extrabold tracking-tight">
             Generate Practice Report

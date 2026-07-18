@@ -223,10 +223,10 @@ function handleBackClick() {
 </script>
 
 <template>
-  <div class="h-screen flex flex-col bg-gray-100">
+  <div class="h-[100dvh] md:h-screen flex flex-col overflow-hidden bg-gray-100">
     <div class="shrink-0 shadow-xl bg-white">
-      <div class="bg-[#144935] text-white px-4 h-16 flex justify-between items-center border-b border-[#0e3325] relative">
-        <div class="flex items-center gap-3 z-10">
+      <div class="bg-[#144935] text-white px-3 sm:px-4 min-h-16 pt-[env(safe-area-inset-top)] flex justify-between items-center border-b border-[#0e3325] relative">
+        <div class="flex min-w-0 items-center gap-2 sm:gap-3 z-10">
           <button
             @click="handleBackClick"
             class="flex items-center text-green-300 hover:text-white transition-colors"
@@ -236,7 +236,7 @@ function handleBackClick() {
           </button>
 
           <div>
-            <h1 class="text-xl font-extrabold tracking-tight leading-none">
+            <h1 class="text-lg sm:text-xl font-extrabold tracking-tight leading-none">
               DREW MBB
             </h1>
             <span :class="statusClass">
@@ -258,7 +258,7 @@ function handleBackClick() {
 
         <div class="flex flex-col items-end z-10">
           <button
-            class="text-3xl font-mono font-black tracking-tighter leading-none hover:text-green-300 transition-colors cursor-pointer"
+            class="text-2xl sm:text-3xl font-mono font-black tracking-tighter leading-none hover:text-green-300 transition-colors cursor-pointer"
             title="Click to Edit Time"
             @click="syncClockManual"
           >
@@ -291,28 +291,28 @@ function handleBackClick() {
         </div>
       </div>
 
-      <div class="bg-white p-2 flex gap-2 border-b border-gray-300">
-        <button :class="mainButtonClass" @click="emit('main-action')">
+      <div class="bg-white p-2 grid grid-cols-3 md:flex gap-2 border-b border-gray-300">
+        <button :class="[mainButtonClass, 'col-span-3 md:col-auto']" @click="emit('main-action')">
           {{ mainButtonText }}
         </button>
 
-        <div class="flex gap-2">
+        <div class="contents md:flex gap-2">
           <button
-            class="bg-gray-600 text-white px-3 py-2 rounded font-semibold text-xs shadow-sm hover:bg-gray-500 transition-colors"
+            class="min-h-10 bg-gray-600 text-white px-2 sm:px-3 py-2 rounded font-semibold text-[11px] sm:text-xs shadow-sm hover:bg-gray-500 transition-colors"
             @click="emit('export-game')"
           >
             Export
           </button>
 
           <button
-            class="bg-orange-600 text-white px-3 py-2 rounded font-semibold text-xs shadow-sm hover:bg-orange-500 transition-colors"
+            class="min-h-10 bg-orange-600 text-white px-2 sm:px-3 py-2 rounded font-semibold text-[11px] sm:text-xs shadow-sm hover:bg-orange-500 transition-colors"
             @click="emit('reset-half')"
           >
             Reset Half
           </button>
 
           <button
-            class="bg-red-700 text-white px-3 py-2 rounded font-semibold text-xs shadow-sm hover:bg-red-600 transition-colors"
+            class="min-h-10 bg-red-700 text-white px-2 sm:px-3 py-2 rounded font-semibold text-[11px] sm:text-xs shadow-sm hover:bg-red-600 transition-colors"
             @click="emit('reset-game')"
           >
             New Game
@@ -336,7 +336,7 @@ function handleBackClick() {
           </span>
         </div>
 
-        <div class="flex-1 p-2 overflow-y-auto flex flex-col gap-2">
+        <div class="mobile-scroll flex-1 p-2 overflow-y-auto flex flex-col gap-2">
           <div
             v-for="player in onCourtPlayers"
             :key="player.id"
@@ -428,7 +428,7 @@ function handleBackClick() {
 
       <div
         :class="[
-          'fixed inset-y-0 right-0 w-3/4 max-w-sm bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out md:static md:w-7/12 md:max-w-none md:translate-x-0 md:shadow-none md:z-auto flex flex-col',
+          'fixed inset-y-0 right-0 w-[min(90vw,24rem)] max-w-none bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out md:static md:w-7/12 md:max-w-none md:translate-x-0 md:shadow-none md:z-auto flex flex-col',
           isBenchOpen ? 'translate-x-0' : 'translate-x-full'
         ]"
       >
@@ -443,7 +443,7 @@ function handleBackClick() {
           </button>
         </div>
 
-        <div class="flex-1 p-2 overflow-y-auto flex flex-col gap-3">
+        <div class="mobile-scroll flex-1 p-2 overflow-y-auto flex flex-col gap-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <div
             v-for="group in benchPlayersByPosition"
             :key="group.pos"
@@ -497,7 +497,7 @@ function handleBackClick() {
       </div>
 
       <button
-        class="md:hidden fixed bottom-6 right-4 z-30 bg-[#002f6c] text-white px-4 py-3 rounded-full shadow-lg font-bold flex items-center gap-2 border-2 border-white hover:scale-105 active:scale-95 transition-transform"
+        class="md:hidden fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-4 z-30 bg-[#002f6c] text-white px-4 py-3 rounded-full shadow-lg font-bold flex items-center gap-2 border-2 border-white active:scale-95 transition-transform"
         @click="isBenchOpen = true"
       >
         &lt; BENCH
@@ -509,7 +509,7 @@ function handleBackClick() {
       class="fixed inset-0 z-[100] flex items-center justify-center px-4"
     >
       <div
-        class="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        class="absolute inset-0 bg-black/70 md:backdrop-blur-sm"
         @click="closePlayerDetail"
       ></div>
 
@@ -667,5 +667,28 @@ function handleBackClick() {
 
 .alert-level-3 {
   animation: pulse-red 0.5s infinite;
+}
+
+@media (max-width: 767px), (prefers-reduced-motion: reduce) {
+  .alert-level-1,
+  .alert-level-2,
+  .alert-level-3 {
+    animation: none;
+  }
+
+  .alert-level-1 {
+    border-color: #facc15;
+    box-shadow: inset 0 0 0 2px #facc15;
+  }
+
+  .alert-level-2 {
+    border-color: #f97316;
+    box-shadow: inset 0 0 0 2px #f97316;
+  }
+
+  .alert-level-3 {
+    border-color: #ef4444;
+    box-shadow: inset 0 0 0 2px #ef4444;
+  }
 }
 </style>

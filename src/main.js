@@ -3,6 +3,7 @@ import { createApp } from 'vue'
 
 // 把你的 App.vue 组件加载进来
 import App from './App.vue'
+import './style.css'
 //创建一个vue应用并挂载到网页上
 createApp(App).mount('#app')
 
