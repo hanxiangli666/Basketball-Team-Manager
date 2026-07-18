@@ -499,6 +499,30 @@ function syncGameClock(newSeconds) {
   sendGameCommand("/game/clock/sync", { seconds: newSeconds })
 }
 
+function applyOptimisticGameClockAdjustment(delta) {
+  const previousClockSeconds = gameClockSeconds.value
+  const nextClockSeconds = Math.max(0, previousClockSeconds + delta)
+  const playerTimeDelta = previousClockSeconds - nextClockSeconds
+
+  gameClockSeconds.value = nextClockSeconds
+
+  if (playerTimeDelta !== 0) {
+    players.value = players.value.map((player) => {
+      if (!player.isOnCourt) {
+        return player
+      }
+
+      return {
+        ...player,
+        currentStint: Math.max(0, player.currentStint + playerTimeDelta),
+        totalSeconds: Math.max(0, player.totalSeconds + playerTimeDelta),
+      }
+    })
+  }
+
+  return nextClockSeconds - previousClockSeconds
+}
+
 async function flushGameClockAdjustments() {
   if (isSavingGameClockAdjustment.value || pendingGameClockDelta.value === 0) {
     return
@@ -531,10 +555,7 @@ async function flushGameClockAdjustments() {
       applyGameSnapshot(await response.json())
 
       if (pendingGameClockDelta.value !== 0) {
-        gameClockSeconds.value = Math.max(
-          0,
-          gameClockSeconds.value + pendingGameClockDelta.value,
-        )
+        applyOptimisticGameClockAdjustment(pendingGameClockDelta.value)
       }
 
       gameSyncError.value = ""
@@ -555,8 +576,12 @@ async function flushGameClockAdjustments() {
 }
 
 function adjustGameClock(delta) {
-  gameClockSeconds.value = Math.max(0, gameClockSeconds.value + delta)
-  pendingGameClockDelta.value += delta
+  const appliedDelta = applyOptimisticGameClockAdjustment(delta)
+  if (appliedDelta === 0) {
+    return
+  }
+
+  pendingGameClockDelta.value += appliedDelta
   flushGameClockAdjustments()
 }
 
