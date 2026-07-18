@@ -130,8 +130,8 @@ watch(
 </script>
 
 <template>
-  <div class="min-h-[100dvh] md:h-screen flex flex-col bg-gray-100">
-    <div class="sticky top-0 z-30 md:static shrink-0 shadow-md bg-[#144935] text-white min-h-14 flex flex-wrap md:flex-nowrap justify-between items-center px-4 pt-[max(0.5rem,env(safe-area-inset-top))] md:py-0 border-b border-[#0e3325] relative">
+  <div class="h-[100dvh] md:h-screen flex flex-col overflow-hidden bg-gray-100">
+    <div class="z-30 shrink-0 shadow-md bg-[#144935] text-white min-h-14 flex flex-wrap md:flex-nowrap justify-between items-center px-4 pt-[max(0.5rem,env(safe-area-inset-top))] md:py-0 border-b border-[#0e3325] relative">
       <div class="flex min-h-12 items-center gap-3 z-10">
         <button
           @click="emit('switch-view', 'landing')"
@@ -148,14 +148,6 @@ watch(
             {{ syncError || (isSyncing ? "Syncing live data" : "Live sync connected") }}
           </div>
         </div>
-      </div>
-
-      <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none hidden md:block">
-        <img
-          src="/Background.jpg"
-          alt="Logo"
-          class="h-10 object-contain drop-shadow-md opacity-90 rounded"
-        />
       </div>
 
       <div class="w-[calc(100%+2rem)] -mx-4 px-4 py-2 md:w-auto md:mx-0 md:px-0 md:py-0 grid grid-cols-[1.5fr_0.8fr_0.8fr] md:flex items-center gap-2 z-10 bg-[#0e3325]/80 md:bg-transparent">
@@ -182,20 +174,20 @@ watch(
       </div>
     </div>
 
-    <div class="flex-none md:flex-1 overflow-visible md:overflow-hidden flex flex-col p-2">
-      <div class="mobile-scroll flex-none md:flex-1 overflow-visible md:overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 content-start pb-2">
+    <div class="flex-1 min-h-0 overflow-hidden flex flex-col p-1 md:p-2">
+      <div class="mobile-scroll flex-1 min-h-0 overflow-y-auto grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-1 md:gap-2 content-start pb-1 md:pb-2">
         <div
           v-for="player in players"
           :key="player.id"
           :class="[
-            'flex flex-col p-1.5 rounded-lg shadow-sm border transition-all',
+            'flex flex-col min-w-0 p-1 md:p-1.5 rounded-md md:rounded-lg shadow-sm border transition-all',
             maxScore > 0 && (player.practiceTotal || 0) === maxScore
               ? 'ring-2 ring-yellow-400 bg-yellow-50 border-yellow-200'
               : 'border-gray-200 bg-white'
           ]"
         >
-          <div class="flex items-center gap-2 mb-2 border-b border-gray-100 pb-2">
-            <div class="relative w-10 h-12 md:w-8 md:h-10 shrink-0">
+          <div class="flex items-center gap-1 md:gap-2 mb-1 md:mb-1.5 border-b border-gray-100 pb-1 md:pb-1.5">
+            <div class="relative w-5 h-6 md:w-8 md:h-10 shrink-0">
               <img
                 :src="player.img"
                 :alt="player.name"
@@ -203,24 +195,24 @@ watch(
               />
               <div
                 v-if="maxScore > 0 && (player.practiceTotal || 0) === maxScore"
-                class="absolute -top-1.5 -left-1.5 text-[8px] font-black tracking-widest bg-yellow-400 text-black px-1 py-0.5 rounded shadow"
+                class="absolute -top-1 -left-1 text-[5px] md:text-[8px] font-black tracking-widest bg-yellow-400 text-black px-0.5 md:px-1 py-px md:py-0.5 rounded shadow"
               >
                 LEAD
               </div>
             </div>
 
             <div class="flex-1 min-w-0">
-              <div class="text-xs md:text-[10px] font-bold text-gray-900 truncate">
+              <div class="text-[7px] md:text-[10px] font-bold text-gray-900 truncate">
                 {{ player.name }}
               </div>
-              <div class="text-[10px] md:text-[8px] text-gray-400">
+              <div class="text-[6px] md:text-[8px] text-gray-400 truncate">
                 #{{ player.number }} · {{ player.pos }}
               </div>
             </div>
 
             <div
               :class="[
-                'text-lg font-black leading-none',
+                'text-xs md:text-lg font-black leading-none',
                 maxScore > 0 && (player.practiceTotal || 0) === maxScore
                   ? 'text-green-600'
                   : 'text-gray-800'
@@ -230,19 +222,19 @@ watch(
             </div>
           </div>
 
-          <div class="grid grid-cols-3 gap-1">
+          <div class="grid grid-cols-3 gap-0.5 md:gap-1">
             <div
               v-for="category in practiceCategories"
               :key="category.key"
-              class="flex flex-col items-center justify-center gap-1"
+              class="flex min-w-0 flex-col items-center justify-center gap-px md:gap-1"
             >
-              <span class="text-[8px] md:text-[7px] text-gray-400 font-bold uppercase leading-none">
+              <span class="text-[5px] md:text-[7px] text-gray-400 font-bold uppercase leading-none">
                 {{ category.label }}
               </span>
 
               <button
                 @click="handleAdd(player.id, category.key)"
-                class="w-full h-8 md:h-5 bg-white border border-gray-200 rounded text-xs md:text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-600 active:text-white transition-colors shadow-sm leading-none"
+                class="w-full h-3.5 md:h-5 bg-white border border-gray-200 rounded-sm md:rounded text-[7px] md:text-[10px] font-bold text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-600 active:text-white transition-colors shadow-sm leading-none"
                 :title="category.title"
               >
                 {{ player.practiceStats?.[category.key] || 0 }}
@@ -252,7 +244,7 @@ watch(
         </div>
       </div>
 
-      <div class="mt-1 md:mt-0 h-auto md:h-48 bg-white p-2 rounded-xl shadow-sm border border-gray-200 shrink-0 flex flex-col">
+      <div class="mt-1 md:mt-0 h-40 md:h-48 bg-white p-1.5 md:p-2 rounded-lg md:rounded-xl shadow-sm border border-gray-200 shrink-0 flex flex-col">
         <div class="flex justify-between items-center mb-1">
           <h3 class="font-bold text-gray-800 text-[10px] uppercase flex items-center gap-2">
             Stats Leaderboard
