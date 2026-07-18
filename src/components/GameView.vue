@@ -22,10 +22,6 @@ const props = defineProps({
     type: String,
     default: null,
   },
-  isSyncing: {
-    type: Boolean,
-    default: false,
-  },
   syncError: {
     type: String,
     default: "",
@@ -243,7 +239,7 @@ function handleBackClick() {
               {{ statusText }}
             </span>
             <div class="text-[9px] uppercase tracking-[0.24em] text-green-200 mt-0.5">
-              {{ syncError || (isSyncing ? "Syncing live game" : "Live sync connected") }}
+              {{ syncError || "Live sync connected" }}
             </div>
           </div>
         </div>
@@ -267,21 +263,21 @@ function handleBackClick() {
 
           <div class="flex gap-2 items-center mt-1">
             <button
-              class="text-[9px] text-green-200 cursor-pointer hover:text-white"
+              class="min-h-8 touch-manipulation text-[9px] text-green-200 cursor-pointer hover:text-white"
               @click="syncClockManual"
             >
               TAP TO SYNC
             </button>
 
-            <div class="flex gap-0.5">
+            <div class="flex gap-1">
               <button
-                class="text-[9px] bg-white/10 hover:bg-white/20 border border-white/10 text-white px-1.5 rounded transition-colors"
+                class="min-w-10 min-h-8 touch-manipulation flex items-center justify-center text-[10px] font-bold bg-white/10 hover:bg-white/20 active:bg-white/30 border border-white/15 text-white px-2 py-1 rounded-md transition-colors"
                 @click="emit('adjust-clock', 1)"
               >
                 +1s
               </button>
               <button
-                class="text-[9px] bg-white/10 hover:bg-white/20 border border-white/10 text-white px-1.5 rounded transition-colors"
+                class="min-w-10 min-h-8 touch-manipulation flex items-center justify-center text-[10px] font-bold bg-white/10 hover:bg-white/20 active:bg-white/30 border border-white/15 text-white px-2 py-1 rounded-md transition-colors"
                 @click="emit('adjust-clock', -1)"
               >
                 -1s

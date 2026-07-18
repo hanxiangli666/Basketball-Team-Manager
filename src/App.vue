@@ -29,6 +29,8 @@ const practiceSyncError = ref("")
 const isGameSyncing = ref(false)
 const gameSyncError = ref("")
 const latestGameRequestId = ref(0)
+const pendingGameClockDelta = ref(0)
+const isSavingGameClockAdjustment = ref(false)
 const injuredPlayerIds = ref([])
 const isInjuriesSyncing = ref(false)
 const injuriesSyncError = ref("")
@@ -497,8 +499,65 @@ function syncGameClock(newSeconds) {
   sendGameCommand("/game/clock/sync", { seconds: newSeconds })
 }
 
+async function flushGameClockAdjustments() {
+  if (isSavingGameClockAdjustment.value || pendingGameClockDelta.value === 0) {
+    return
+  }
+
+  isSavingGameClockAdjustment.value = true
+  isGameSyncing.value = true
+  latestGameRequestId.value += 1
+  let shouldRefreshFromServer = false
+
+  try {
+    while (pendingGameClockDelta.value !== 0) {
+      const delta = pendingGameClockDelta.value
+      pendingGameClockDelta.value = 0
+
+      const response = await fetch(`${API_BASE_URL}/game/clock/adjust`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ delta }),
+      })
+
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => null)
+        const detail = errorPayload?.detail || `Failed to adjust game clock: ${response.status}`
+        throw new Error(detail)
+      }
+
+      applyGameSnapshot(await response.json())
+
+      if (pendingGameClockDelta.value !== 0) {
+        gameClockSeconds.value = Math.max(
+          0,
+          gameClockSeconds.value + pendingGameClockDelta.value,
+        )
+      }
+
+      gameSyncError.value = ""
+    }
+  } catch (error) {
+    console.error("Game clock adjustment failed:", error)
+    gameSyncError.value = error.message || "Could not adjust the game clock."
+    pendingGameClockDelta.value = 0
+    shouldRefreshFromServer = true
+  } finally {
+    isSavingGameClockAdjustment.value = false
+    isGameSyncing.value = false
+  }
+
+  if (shouldRefreshFromServer) {
+    syncGameState({ silent: true })
+  }
+}
+
 function adjustGameClock(delta) {
-  sendGameCommand("/game/clock/adjust", { delta })
+  gameClockSeconds.value = Math.max(0, gameClockSeconds.value + delta)
+  pendingGameClockDelta.value += delta
+  flushGameClockAdjustments()
 }
 
 function resetHalf() {
@@ -617,7 +676,6 @@ onBeforeUnmount(() => {
     :game-state="gameState"
     :status-text-override="gameStatusText"
     :main-button-text-override="gameMainButtonText"
-    :is-syncing="isGameSyncing"
     :sync-error="gameSyncError"
     @switch-view="switchView"
     @toggle-player="togglePlayerOnCourt"
