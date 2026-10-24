@@ -1,46 +1,48 @@
-# Drew Rangers · Courtside Desk
+# Drew Rangers · Tracker Pro
 
-A browser-only game rotation tracker for Drew men's basketball. Game day opens directly, with an optional practice tab.
+作者：Hanxiang Li。
 
-## Game day
+恢复为原来的绿色首页、蓝色比赛球员卡片和手机 Bench 抽屉，保留 Practice 与 Game。界面参考今天改版前的 `03481ea`（2026-07-18）；完整 Git 历史仍在。
 
-- Large start/stop control, separated ±1 / ±10 second buttons, and an exact-time editor available while paused.
-- A compact clock bar remains available when scrolling through the lineup or bench.
-- Timestamp-based countdown with millisecond-accurate substitutions. A delayed callback does not lose playing time.
-- Current stint, total minutes, player fouls and bench rest time.
-- Select **Sub out**, choose a replacement, then **Confirm swap**. Both players change at the same instant. Player photos and cards never trigger substitutions.
-- **Off court only** supports short-handed lineups. Starting with fewer than five requires confirmation.
-- Undo recent substitutions, foul changes and clock corrections. Starting/stopping the clock, changing periods, refreshing or starting a new game clears undo history.
-- Two 20-minute halves and 5-minute overtime periods. Next period preserves total minutes and fouls, and resets stints. Period changes and new games require confirmation.
-- Duplicate taps within 350 ms are ignored for the same control.
+## 在这台 Mac 上运行
 
-Clock corrections adjust the active lineup's recorded time by the same amount. Pregame clock setup does not award playing time. When the clock reaches zero it stops automatically.
+需要 Node.js 22.12 或更高版本。
 
-## Local data
-
-Game state and practice stats are saved in `localStorage` on the current browser and origin. Reloading a running game catches up from its saved timestamp, capped at the end of the period. Pausing before leaving the page keeps the game paused. Clearing browser data removes the saved game. Devices and browser tabs do not share live game state; use one tab as the game desk.
-
-There are no API requests, database requirements, admin pages, injury tracking, reports, or CSV exports. The previous Cloudflare database is not modified or migrated into local storage. Historical SQL migrations remain as a record of the previous schema; the static app does not execute them. Any separately deployed legacy roster-sync Worker must be disabled separately in Cloudflare if it is still running.
-
-## Roster updates
-
-Edit `src/data/roster.js` and place supplied photos in `public/Photos/`. Keep IDs stable for returning players and assign new IDs to new players. Names, jersey numbers, positions and photos come from this file, so an old saved game cannot overwrite roster updates. The current roster is retained until the new season's changes are confirmed.
-
-## Development
-
-Requires Node.js 22.12+ or a compatible current LTS version.
-
-```powershell
+```sh
 npm ci
 npm run dev
-npm test
-npm run build
 ```
 
-The production output is `dist/`. Deploy it as a static website. The retained Cloudflare Pages project name is `drew-tracker-github`; no Functions or D1 binding is needed.
+检查与生产预览：
 
-Vue 3 handles the interface, while the framework-independent JavaScript engine in `src/game/session.js` handles all game time and rotation changes locally. Vite builds the static bundle.
+```sh
+npm test
+npm run build
+npm run preview -- --host 127.0.0.1 --port 4173
+```
 
-## Development handoff
+本地预览地址：http://127.0.0.1:4173/ 。线上网站：[drew-mbb.com](https://drew-mbb.com)。生产静态文件在 `dist/`；GitHub `main` 分支由 Cloudflare Pages 项目 `drew-tracker-github` 自动构建发布。
 
-The 18 game-engine tests pass. Components were compiled and main interactions were checked with a temporary cached Vue preview on Windows. The production Vite build remains unverified because dependency downloads were blocked in that environment. After cloning or pulling on the Mac Mini, run `npm ci`, `npm test`, and `npm run build` before deployment. The temporary preview harness is excluded from Git and is not required to run the project.
+## 使用
+
+- Game：确认首发，再点 Start Clock。启停、±1 秒、精确调时和换人全部在本机直接执行。
+- 默认首发：Eli Yusavage、Andre De Los Reyes、Charlie Thornton、Ben Manns、Dylan。
+- 默认首发改变时，未开赛且没有计时记录的旧存档会自动采用新默认阵容。之后手动选择的阵容可以正常刷新保留；已开赛的比赛保留原阵容和时间。
+- 换人：点场上球员的 **Sub out**，在 Bench 抽屉点替补球员的 **Swap in**。两人的计时在同一操作时刻交接；点照片只看详情。可用 **Undo** 撤销最近的换人或调时。
+- 两个半场各 20 分钟，加时 5 分钟。切换半场保留累计时间和阵容。新比赛和切换半场有确认提示。
+- 计时使用时间戳差值，不累计定时器回调次数；显示按秒刷新。浏览器忙碌、切到后台或刷新后，会补算已过时间，最多到本节结束。离开前应按实际比赛情况停止计时。
+- Practice：保留九项统计、排序和排行榜。手机显示两列球员卡片，计分按钮至少 44 像素高。
+- 比赛仅保留时间和换人相关操作，不再显示导出、犯规统计或球衣号码。
+- 顶部使用统一绿色计时面板、明确的启停主按钮和独立加减秒按钮。移除球员计时旁的 STINT 标签与底部提醒文案，保留计时数字。
+
+Vue 只负责界面，独立 JavaScript 计时模块位于 `src/game/session.js`。所有样式在构建时生成，不依赖外部 CDN。打开后，启停、调时、换人及训练统计都不需要联网；首次打开或刷新仍需要访问静态网页。
+
+## 数据与球员
+
+数据保存在当前浏览器、当前地址的 `localStorage`，不再等待后台接口，也不会在 Mac 与手机之间自动同步。清理浏览器数据会删除本机统计。比赛时使用一个浏览器标签页，避免多个标签同时写入。
+
+球员名单集中在 `src/data/roster.js`，照片在 `public/Photos/`。当前共 20 人：保留 12 名老球员，加入用户指定的 8 名新球员。七名已毕业球员及其不再使用的照片已移除。所有球员不显示球衣号码。新照片直接复制用户提供的原图，显示时保留完整比例。现有球员 ID 保持稳定，新球员使用新 ID，避免旧统计串到其他人名下。
+
+伤病、Admin、API key、AI 报告生成及旧数据库迁移文件已移除。这里不包含后台服务或 D1 绑定。
+
+当前恢复依据、测试边界和后续工作见 [本地交接记录](docs/HANDOFF.md)。

@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { applyAction, createSession, formatTime, periodDuration, restoreSession, settleSession } from '../../src/game/session.js'
-import { roster } from '../../src/data/roster.js'
+import { roster as teamRoster } from '../../src/data/roster.js'
+
+// Timing rules use a complete fixture lineup, independent of seasonal roster choices.
+const roster = teamRoster.map((player, index) => ({ ...player, starter: index < 5 }))
 
 const start = (now = 1000) => applyAction(createSession(roster), { type: 'clock' }, now)
 const stateOf = (session, id) => session.players.find((player) => player.id === id)
 const starterId = roster.find((player) => player.starter).id
 const benchId = roster.find((player) => !player.starter).id
 
-test('starts with the existing five starters and a 20-minute clock', () => {
+test('respects a selected five-player lineup and starts with a 20-minute clock', () => {
   const session = createSession(roster)
   assert.equal(session.players.filter((player) => player.isOnCourt).length, 5)
   assert.equal(session.clockMs, 1200000)
@@ -104,24 +107,14 @@ test('short-handed starts require an explicit override', () => {
   assert.equal(applyAction(short, { type: 'clock', allowShortHanded: true }, 1000).status, 'PLAYING')
 })
 
-test('fouls stay in range and a fouled-out player cannot enter', () => {
-  let session = createSession(roster)
-  for (let i = 0; i < 8; i++) session = applyAction(session, { type: 'foul', playerId: benchId, delta: 1 }, 1000)
-  assert.equal(stateOf(session, benchId).fouls, 5)
-  assert.throws(() => applyAction(session, { type: 'swap', outId: starterId, playerId: benchId }, 1000), /fouled out/)
-  session = applyAction(session, { type: 'foul', playerId: starterId, delta: -1 }, 1000)
-  assert.equal(stateOf(session, starterId).fouls, 0)
-})
-
-test('next half preserves totals, fouls and lineup, resets stints, and supports 5-minute overtime', () => {
-  let session = applyAction(start(), { type: 'foul', playerId: starterId, delta: 1 }, 4000)
+test('next half preserves totals and lineup, resets stints, and supports 5-minute overtime', () => {
+  let session = settleSession(start(), 4000)
   session = applyAction(session, { type: 'next-period' }, 4000)
   assert.equal(session.period, 2)
   assert.equal(session.clockMs, 1200000)
   assert.equal(session.status, 'PAUSED')
   assert.equal(stateOf(session, starterId).totalMs, 3000)
   assert.equal(stateOf(session, starterId).stintMs, 0)
-  assert.equal(stateOf(session, starterId).fouls, 1)
   assert.equal(stateOf(session, starterId).isOnCourt, true)
   session = applyAction(session, { type: 'next-period' }, 5000)
   assert.equal(session.period, 3)
@@ -169,4 +162,82 @@ test('formats countdown and elapsed minutes without showing zero early', () => {
   assert.equal(formatTime(1001, true), '00:02')
   assert.equal(formatTime(1999), '00:01')
   assert.equal(formatTime(0, true), '00:00')
+})
+
+test('classic starter confirmation keeps the clock paused until an explicit start', () => {
+  const confirmed = applyAction(createSession(roster), { type: 'confirm-starters' }, 1000)
+  assert.equal(confirmed.status, 'PAUSED')
+  assert.equal(confirmed.lastTickAt, null)
+  assert.strictEqual(settleSession(confirmed, 9000), confirmed)
+  assert.equal(applyAction(confirmed, { type: 'clock' }, 9000).status, 'PLAYING')
+  const short = applyAction(createSession(roster), { type: 'toggle', playerId: starterId }, 1000)
+  assert.throws(() => applyAction(short, { type: 'confirm-starters' }, 1000), /five/)
+})
+
+test('last sub-out clock survives substitution, period changes and a reload', () => {
+  const swapped = applyAction(start(), { type: 'swap', outId: starterId, playerId: benchId }, 2250)
+  assert.equal(stateOf(swapped, starterId).lastSubOutClockMs, 1198750)
+  const nextHalf = applyAction(swapped, { type: 'next-period' }, 2250)
+  const restored = restoreSession(JSON.stringify(nextHalf), roster, 3000)
+  assert.equal(stateOf(restored, starterId).lastSubOutClockMs, 1198750)
+})
+
+test('loading a previous local save without substitution metadata remains compatible', () => {
+  const saved = createSession(roster)
+  for (const player of saved.players) delete player.lastSubOutClockMs
+  const restored = restoreSession(saved, roster, 1000)
+  assert.equal(stateOf(restored, starterId).lastSubOutClockMs, null)
+})
+
+// Older local saves may still contain retired players and removed foul counters.
+test('season migration drops retired players and legacy foul restrictions without losing returning minutes', () => {
+  const saved = start()
+  for (const player of saved.players) player.fouls = 5
+  const currentRoster = roster.filter((player) => player.id !== starterId)
+  const restored = restoreSession(saved, currentRoster, 2000)
+  assert.equal(restored.players.some((player) => player.id === starterId), false)
+  assert.ok(restored.players.every((player) => !('fouls' in player)))
+  assert.equal(stateOf(restored, roster[1].id).totalMs, 1000)
+  const next = applyAction(restored, { type: 'toggle', playerId: benchId }, 2000)
+  assert.equal(stateOf(next, benchId).isOnCourt, true)
+})
+
+test('legacy two-player setup restores the current five default starters automatically', () => {
+  const saved = createSession(teamRoster)
+  delete saved.defaultLineupKey
+  saved.players.forEach((player) => { player.isOnCourt = [6, 8].includes(player.id) })
+  const restored = restoreSession(JSON.stringify(saved), teamRoster, 1000)
+  assert.deepEqual(restored.players.filter((player) => player.isOnCourt).map((player) => player.id),
+    teamRoster.filter((player) => player.starter).map((player) => player.id))
+  assert.equal(restored.clockMs, saved.clockMs)
+  assert.equal(restored.status, 'SETUP')
+})
+
+test('changed defaults migrate an unstarted setup without resetting its clock', () => {
+  const previousRoster = teamRoster.map((player) => ({ ...player, starter: [4, 6].includes(player.id) }))
+  const saved = applyAction(createSession(previousRoster), { type: 'adjust-clock', seconds: 600 }, 1000)
+  const restored = restoreSession(saved, teamRoster, 2000)
+  assert.deepEqual(restored.players.filter((player) => player.isOnCourt).map((player) => player.id),
+    teamRoster.filter((player) => player.starter).map((player) => player.id))
+  assert.equal(restored.clockMs, 600000)
+})
+
+test('a manually selected setup survives subsequent reloads with the same defaults', () => {
+  const saved = applyAction(createSession(teamRoster), { type: 'swap', outId: 26, playerId: 19 }, 1000)
+  const once = restoreSession(JSON.stringify(saved), teamRoster, 2000)
+  const twice = restoreSession(JSON.stringify(once), teamRoster, 3000)
+  assert.equal(stateOf(twice, 19).isOnCourt, true)
+  assert.equal(stateOf(twice, 26).isOnCourt, false)
+})
+
+test('updated defaults never replace the lineup or minutes of a started game', () => {
+  const oldRoster = teamRoster.map((player) => ({ ...player, starter: [6, 8].includes(player.id) }))
+  const running = applyAction(createSession(oldRoster), { type: 'clock', allowShortHanded: true }, 1000)
+  delete running.defaultLineupKey
+  for (const saved of [running, applyAction(running, { type: 'clock' }, 1500)]) {
+    const restored = restoreSession(saved, teamRoster, 2000)
+    assert.deepEqual(restored.players.filter((player) => player.isOnCourt).map((player) => player.id), [6, 8])
+    assert.equal(stateOf(restored, 6).totalMs, saved.status === 'PLAYING' ? 1000 : 500)
+    assert.equal(restored.status, saved.status)
+  }
 })

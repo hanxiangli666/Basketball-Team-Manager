@@ -18,6 +18,7 @@ export function createSession(roster) {
     clockMs: periodDuration(1),
     status: 'SETUP',
     lastTickAt: null,
+    defaultLineupKey: roster.filter((player) => player.starter).map((player) => player.id).sort((a, b) => a - b).join(','),
     players: roster.map((player) => ({
       id: player.id,
       isOnCourt: Boolean(player.starter),
@@ -25,7 +26,7 @@ export function createSession(roster) {
       totalMs: 0,
       restMs: 0,
       hasPlayed: false,
-      fouls: 0,
+      lastSubOutClockMs: null,
     })),
   }
 }
@@ -63,6 +64,11 @@ export function applyAction(session, action, now = Date.now()) {
   const courtCount = () => next.players.filter((candidate) => candidate.isOnCourt).length
 
   switch (action.type) {
+    case 'confirm-starters':
+      if (next.status !== 'SETUP') throw new Error('Starters have already been confirmed.')
+      if (courtCount() !== 5 && !action.allowShortHanded) throw new Error('Select five players before confirming.')
+      next.status = 'PAUSED'
+      break
     case 'clock': {
       if (next.status === 'PLAYING') {
         next.status = 'PAUSED'
@@ -78,8 +84,8 @@ export function applyAction(session, action, now = Date.now()) {
     case 'toggle': {
       if (!player) throw new Error('Player not found.')
       if (!player.isOnCourt && courtCount() >= 5) throw new Error('Select a player to sub out first.')
-      if (!player.isOnCourt && player.fouls >= 5) throw new Error('This player has fouled out.')
       player.isOnCourt = !player.isOnCourt
+      if (!player.isOnCourt) player.lastSubOutClockMs = next.clockMs
       player.stintMs = 0
       player.restMs = 0
       break
@@ -87,8 +93,8 @@ export function applyAction(session, action, now = Date.now()) {
     case 'swap': {
       const outgoing = next.players.find((candidate) => candidate.id === action.outId)
       if (!outgoing?.isOnCourt || !player || player.isOnCourt) throw new Error('Choose one player on court and one on the bench.')
-      if (player.fouls >= 5) throw new Error('This player has fouled out.')
       outgoing.isOnCourt = false
+      outgoing.lastSubOutClockMs = next.clockMs
       outgoing.stintMs = 0
       outgoing.restMs = 0
       player.isOnCourt = true
@@ -109,10 +115,6 @@ export function applyAction(session, action, now = Date.now()) {
       }
       break
     }
-    case 'foul':
-      if (!player) throw new Error('Player not found.')
-      player.fouls = Math.max(0, Math.min(5, player.fouls + action.delta))
-      break
     case 'next-period':
       next.period += 1
       next.clockMs = periodDuration(next.period)
@@ -142,13 +144,21 @@ export function restoreSession(raw, roster, now = Date.now()) {
   next.players = next.players.map((player) => {
     const stored = saved.players.find((candidate) => candidate.id === player.id)
     if (!stored) return { ...player, isOnCourt: false }
-    if (!['stintMs', 'totalMs', 'restMs', 'fouls'].every((key) => finite(stored[key]))
-      || !Number.isInteger(stored.fouls) || stored.fouls > 5
+    if (!['stintMs', 'totalMs', 'restMs'].every((key) => finite(stored[key]))
       || typeof stored.isOnCourt !== 'boolean' || typeof stored.hasPlayed !== 'boolean'
       || stored.stintMs > stored.totalMs) throw new Error('Saved player data could not be read.')
+    const lastSubOutClockMs = stored.lastSubOutClockMs ?? null
+    if (lastSubOutClockMs !== null && !finite(lastSubOutClockMs)) throw new Error('Saved substitution time could not be read.')
     return { id: player.id, isOnCourt: stored.isOnCourt, stintMs: stored.stintMs, totalMs: stored.totalMs,
-      restMs: stored.restMs, hasPlayed: stored.hasPlayed, fouls: stored.fouls }
+      restMs: stored.restMs, hasPlayed: stored.hasPlayed, lastSubOutClockMs }
   })
   if (next.players.filter((player) => player.isOnCourt).length > 5) throw new Error('Saved lineup is invalid.')
+  // Old setup saves must not override a newly configured default lineup. Once
+  // migrated, the key preserves later manual selections across reloads.
+  if (saved.defaultLineupKey !== next.defaultLineupKey && next.status === 'SETUP' && next.period === 1
+    && next.players.every((player) => !player.hasPlayed && player.totalMs === 0 && player.stintMs === 0 && player.restMs === 0)) {
+    const starters = new Set(roster.filter((player) => player.starter).map((player) => player.id))
+    next.players.forEach((player) => { player.isOnCourt = starters.has(player.id) })
+  }
   return settleSession(next, now)
 }

@@ -13,26 +13,3 @@ export const practiceCategories = [
 export function createEmptyPracticeStats() {
   return Object.fromEntries(practiceCategories.map((category) => [category.key, 0]))
 }
-
-export function createPlayerState(player) {
-  return {
-    ...player,
-    currentStint: 0,
-    totalSeconds: 0,
-    fouls: 0,
-    isOnCourt: false,
-    lastSubOutClock: null,
-    subOutGameClock: null,
-    practiceStats: createEmptyPracticeStats(),
-    practiceTotal: 0,
-  }
-}
-
-
-export const defaultStarterNames = [
-  "Eli",
-  "Andre",
-  "Devon",
-  "David",
-  "Kevin Cronin",
-]
