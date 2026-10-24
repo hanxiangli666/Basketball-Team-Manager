@@ -1,715 +1,160 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
-import {
-  createEmptyPracticeStats,
-  createPlayerState,
-  practiceCategories,
-} from "./data/players"
-import LandingView from "./components/LandingView.vue"
-import PracticeView from "./components/PracticeView.vue"
-import GameView from "./components/GameView.vue"
-import AdminReviewView from "./components/AdminReviewView.vue"
-import InjuriesView from "./components/InjuriesView.vue"
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import GameView from './components/GameView.vue'
+import PracticeView from './components/PracticeView.vue'
+import { roster } from './data/roster.js'
+import { createEmptyPracticeStats } from './data/players.js'
+import { applyAction, createSession, restoreSession, settleSession, STORAGE_KEY } from './game/session.js'
 
-const currentView = ref("landing")
-const players = ref([])
-const gameClockSeconds = ref(1200)
-const gameState = ref("SETUP")
-const gameStatusText = ref(null)
-const gameMainButtonText = ref(null)
-const practiceSyncInterval = ref(null)
-const gameSyncInterval = ref(null)
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api"
-const PRACTICE_SYNC_INTERVAL_MS = 2000
-const GAME_SYNC_INTERVAL_MS = 500
-const isInitializing = ref(true)
-const initializationError = ref("")
-const isPracticeSyncing = ref(false)
-const practiceSyncError = ref("")
-const isGameSyncing = ref(false)
-const gameSyncError = ref("")
-const latestGameRequestId = ref(0)
-const pendingGameClockDelta = ref(0)
-const isSavingGameClockAdjustment = ref(false)
-const injuredPlayerIds = ref([])
-const isInjuriesSyncing = ref(false)
-const injuriesSyncError = ref("")
-const isGeneratingPracticeReport = ref(false)
-const practiceReportError = ref("")
-const practiceSortMode = ref("default")
+const view = ref('game')
+const session = ref(createSession(roster))
+const history = ref([])
+const notice = ref('')
+const storageWarning = ref('')
+const practice = ref({})
+const practiceKey = 'drew.rotation.practice.v1'
+let tickTimer, saveTimer, noticeTimer, lastSaveAt = 0
 
-const injuredIdSet = computed(() => new Set(injuredPlayerIds.value))
-const availablePlayers = computed(() =>
-  players.value.filter((player) => !injuredIdSet.value.has(player.id)),
-)
-
-function calculatePracticeTotal(practiceStats) {
-  return practiceCategories.reduce(
-    (sum, category) => sum + (practiceStats?.[category.key] || 0),
-    0,
-  )
+try {
+  const saved = localStorage.getItem(STORAGE_KEY)
+  if (saved) session.value = restoreSession(saved, roster)
+} catch {
+  storageWarning.value = 'Could not restore the saved game. A fresh game is open; check your lineup before starting.'
 }
-
-function createSyncedPlayerState(rawPlayer) {
-  const basePlayer = createPlayerState(rawPlayer)
-  const practiceStats = {
-    ...createEmptyPracticeStats(),
-    ...(rawPlayer.practiceStats || {}),
-  }
-
-  return {
-    ...basePlayer,
-    currentStint: rawPlayer.currentStint ?? 0,
-    totalSeconds: rawPlayer.totalSeconds ?? 0,
-    fouls: rawPlayer.fouls ?? 0,
-    isOnCourt: rawPlayer.isOnCourt ?? false,
-    lastSubOutClock: rawPlayer.lastSubOutClock ?? null,
-    subOutGameClock: rawPlayer.subOutGameClock ?? null,
-    practiceStats,
-    practiceTotal: rawPlayer.practiceTotal ?? calculatePracticeTotal(practiceStats),
-  }
-}
-
-function buildPlayersFromBackend(rawPlayers, { preserveCurrentOrder = true } = {}) {
-  const currentOrderById = new Map(players.value.map((player, index) => [player.id, index]))
-  const nextPlayers = rawPlayers.map((player) => createSyncedPlayerState(player))
-
-  if (preserveCurrentOrder && currentOrderById.size > 0) {
-    nextPlayers.sort(
-      (a, b) => (currentOrderById.get(a.id) ?? a.id) - (currentOrderById.get(b.id) ?? b.id),
-    )
-  }
-
-  return nextPlayers
-}
-
-function applyPracticeSort(nextPlayers) {
-  if (practiceSortMode.value !== "score-desc") {
-    return nextPlayers
-  }
-
-  const currentOrderById = new Map(players.value.map((player, index) => [player.id, index]))
-
-  return [...nextPlayers].sort((a, b) => {
-    if ((b.practiceTotal || 0) !== (a.practiceTotal || 0)) {
-      return (b.practiceTotal || 0) - (a.practiceTotal || 0)
+try {
+  const saved = JSON.parse(localStorage.getItem(practiceKey) || '{}')
+  for (const player of roster) {
+    practice.value[player.id] = createEmptyPracticeStats()
+    for (const key of Object.keys(practice.value[player.id])) {
+      const value = saved?.[player.id]?.[key]
+      if (Number.isSafeInteger(value) && value >= 0) practice.value[player.id][key] = value
     }
-
-    return (currentOrderById.get(a.id) ?? a.id) - (currentOrderById.get(b.id) ?? b.id)
-  })
-}
-
-function sortPlayersById(nextPlayers) {
-  return [...nextPlayers].sort((a, b) => a.id - b.id)
-}
-
-function applyGameSnapshot(snapshot, options = {}) {
-  players.value = buildPlayersFromBackend(snapshot.players || [], options)
-  gameClockSeconds.value = snapshot.gameClockSeconds ?? 1200
-  gameState.value = snapshot.gameState ?? "SETUP"
-  gameStatusText.value = snapshot.gameStatusText ?? null
-  gameMainButtonText.value = snapshot.gameMainButtonText ?? null
-}
-
-function applyInjuriesSnapshot(snapshot) {
-  players.value = buildPlayersFromBackend(snapshot.players || [], {
-    preserveCurrentOrder: true,
-  })
-  injuredPlayerIds.value = snapshot.injuredPlayerIds || []
-}
-
-async function fetchBackendData(endpoint) {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`)
-
-  if (!response.ok) {
-    throw new Error(`Failed to load ${endpoint}: ${response.status}`)
   }
+} catch { practice.value = Object.fromEntries(roster.map((player) => [player.id, createEmptyPracticeStats()])) }
 
-  return response.json()
+const players = computed(() => roster.map((player) => ({
+  ...player,
+  ...session.value.players.find((state) => state.id === player.id),
+  practiceStats: practice.value[player.id] || createEmptyPracticeStats(),
+})))
+
+function notify(message) {
+  notice.value = message
+  clearTimeout(noticeTimer)
+  noticeTimer = setTimeout(() => { notice.value = '' }, 4500)
 }
 
-async function syncPracticeState({ silent = false } = {}) {
-  if (isPracticeSyncing.value) {
-    return
-  }
-
+function persist() {
+  clearTimeout(saveTimer)
+  saveTimer = null
   try {
-    isPracticeSyncing.value = true
-    const backendPlayers = await fetchBackendData("/practice")
-    players.value = applyPracticeSort(buildPlayersFromBackend(backendPlayers, {
-      preserveCurrentOrder: currentView.value !== "practice",
-    }))
-    practiceSyncError.value = ""
-  } catch (error) {
-    console.error("Practice sync failed:", error)
-    practiceSyncError.value = "Practice sync paused. Retrying..."
-
-    if (!silent) {
-      throw error
-    }
-  } finally {
-    isPracticeSyncing.value = false
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session.value))
+    localStorage.setItem(practiceKey, JSON.stringify(practice.value))
+    lastSaveAt = Date.now()
+  } catch {
+    storageWarning.value = 'This browser cannot save changes. Keep this page open to preserve the current game.'
   }
 }
 
-async function syncGameState({ silent = false } = {}) {
-  if (isGameSyncing.value) {
-    return
-  }
+function scheduleSave() {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(persist, 120)
+}
 
-  const requestId = ++latestGameRequestId.value
-
+function act(action) {
+  const now = Date.now()
+  const previous = settleSession(session.value, now)
   try {
-    isGameSyncing.value = true
-    const snapshot = await fetchBackendData("/game")
-    if (requestId !== latestGameRequestId.value) {
-      return
-    }
-
-    applyGameSnapshot(snapshot)
-    gameSyncError.value = ""
-  } catch (error) {
-    console.error("Game sync failed:", error)
-    gameSyncError.value = "Game sync paused. Retrying..."
-
-    if (!silent) {
-      throw error
-    }
-  } finally {
-    if (requestId === latestGameRequestId.value) {
-      isGameSyncing.value = false
-    }
-  }
+    const next = applyAction(previous, action, now)
+    if (['toggle', 'swap', 'adjust-clock', 'foul'].includes(action.type)) {
+      history.value = [...history.value.slice(-19), { session: previous, label: action.label || 'Last change' }]
+    } else history.value = []
+    session.value = next
+    if (action.label) notify(action.label)
+    scheduleSave()
+  } catch (error) { notify(error.message) }
 }
 
-async function sendGameCommand(endpoint, payload = undefined) {
-  const requestId = ++latestGameRequestId.value
-
-  try {
-    isGameSyncing.value = true
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      method: "POST",
-      headers: payload ? { "Content-Type": "application/json" } : undefined,
-      body: payload ? JSON.stringify(payload) : undefined,
-    })
-
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => null)
-      const detail = errorPayload?.detail || `Failed to save ${endpoint}: ${response.status}`
-      throw new Error(detail)
-    }
-
-    const snapshot = await response.json()
-    if (requestId !== latestGameRequestId.value) {
-      return
-    }
-
-    applyGameSnapshot(snapshot)
-    gameSyncError.value = ""
-  } catch (error) {
-    console.error("Game command failed:", error)
-    gameSyncError.value = error.message || "Could not save game changes."
-  } finally {
-    if (requestId === latestGameRequestId.value) {
-      isGameSyncing.value = false
-    }
-  }
+function undo() {
+  const record = history.value.pop()
+  if (!record) return
+  session.value = settleSession(record.session, Date.now())
+  notify(`Undone: ${record.label}`)
+  scheduleSave()
 }
 
-async function initializeAppState() {
-  try {
-    initializationError.value = ""
-    const snapshot = await fetchBackendData("/game")
-    applyGameSnapshot(snapshot, { preserveCurrentOrder: false })
-  } catch (error) {
-    console.error("Failed to initialize app state:", error)
-    initializationError.value = "Could not load players from the backend. Make sure the API is available at /api or set VITE_API_BASE_URL."
-    players.value = []
-  } finally {
-    isInitializing.value = false
-  }
+function newGame() {
+  session.value = createSession(roster)
+  history.value = []
+  notify('New game ready. Select your starting five.')
+  scheduleSave()
 }
 
-function startPracticeSync() {
-  if (practiceSyncInterval.value) {
+function changeView(nextView) {
+  if (nextView === 'practice' && session.value.status === 'PLAYING') {
+    notify('Pause the game clock before opening practice.')
     return
   }
-
-  practiceSyncInterval.value = setInterval(() => {
-    syncPracticeState({ silent: true })
-  }, PRACTICE_SYNC_INTERVAL_MS)
+  view.value = nextView
 }
 
-function stopPracticeSync() {
-  if (!practiceSyncInterval.value) {
-    return
-  }
-
-  clearInterval(practiceSyncInterval.value)
-  practiceSyncInterval.value = null
+function updatePractice(playerId, key, delta) {
+  if (!(key in practice.value[playerId])) return
+  practice.value[playerId][key] = Math.max(0, practice.value[playerId][key] + delta)
+  scheduleSave()
 }
 
-function startGameSync() {
-  if (gameSyncInterval.value) {
-    return
-  }
-
-  gameSyncInterval.value = setInterval(() => {
-    syncGameState({ silent: true })
-  }, GAME_SYNC_INTERVAL_MS)
+function resetPractice() {
+  practice.value = Object.fromEntries(roster.map((player) => [player.id, createEmptyPracticeStats()]))
+  scheduleSave()
 }
 
-function stopGameSync() {
-  if (!gameSyncInterval.value) {
-    return
-  }
-
-  clearInterval(gameSyncInterval.value)
-  gameSyncInterval.value = null
+function refreshClock() {
+  const previous = session.value
+  session.value = settleSession(previous, Date.now())
+  if (previous.status === 'PLAYING' && session.value.status === 'PAUSED') {
+    history.value = []
+    notify('Period ended. The clock is stopped.')
+    persist()
+  } else if (session.value.status === 'PLAYING' && Date.now() - lastSaveAt >= 1000 && !saveTimer) scheduleSave()
 }
 
-function switchView(view) {
-  currentView.value = view
-}
-
-async function updatePracticeStat(playerId, key, delta) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/practice/${playerId}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        statKey: key,
-        delta,
-      }),
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to update practice stat: ${response.status}`)
-    }
-
-    const backendPlayers = await response.json()
-    players.value = applyPracticeSort(buildPlayersFromBackend(backendPlayers, {
-      preserveCurrentOrder: currentView.value !== "practice",
-    }))
-    practiceSyncError.value = ""
-  } catch (error) {
-    console.error("Practice update failed:", error)
-    practiceSyncError.value = "Could not save practice update."
-  }
-}
-
-function sortPracticePlayers() {
-  if (practiceSortMode.value === "score-desc") {
-    practiceSortMode.value = "default"
-    players.value = sortPlayersById(players.value)
-    return
-  }
-
-  practiceSortMode.value = "score-desc"
-  players.value = applyPracticeSort(players.value)
-}
-
-async function resetPractice() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/practice/reset`, {
-      method: "POST",
-    })
-
-    if (!response.ok) {
-      throw new Error(`Failed to reset practice stats: ${response.status}`)
-    }
-
-    const backendPlayers = await response.json()
-    practiceSortMode.value = "default"
-    players.value = buildPlayersFromBackend(backendPlayers, {
-      preserveCurrentOrder: false,
-    })
-    practiceSyncError.value = ""
-  } catch (error) {
-    console.error("Practice reset failed:", error)
-    practiceSyncError.value = "Could not reset practice stats."
-  }
-}
-
-async function syncInjuriesState({ silent = false } = {}) {
-  if (isInjuriesSyncing.value) {
-    return
-  }
-
-  try {
-    isInjuriesSyncing.value = true
-    applyInjuriesSnapshot(await fetchBackendData("/injuries"))
-    injuriesSyncError.value = ""
-  } catch (error) {
-    console.error("Injuries sync failed:", error)
-    injuriesSyncError.value = "Injury sync paused. Retrying..."
-
-    if (!silent) {
-      throw error
-    }
-  } finally {
-    isInjuriesSyncing.value = false
-  }
-}
-
-async function sendInjuriesCommand(endpoint, { method = "POST" } = {}) {
-  try {
-    isInjuriesSyncing.value = true
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, { method })
-
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => null)
-      const detail = errorPayload?.detail || `Failed to save ${endpoint}: ${response.status}`
-      throw new Error(detail)
-    }
-
-    applyInjuriesSnapshot(await response.json())
-    injuriesSyncError.value = ""
-  } catch (error) {
-    console.error("Injuries command failed:", error)
-    injuriesSyncError.value = error.message || "Could not save injury changes."
-  } finally {
-    isInjuriesSyncing.value = false
-  }
-}
-
-async function generatePracticeReport(notes) {
-  try {
-    isGeneratingPracticeReport.value = true
-    practiceReportError.value = ""
-
-    const response = await fetch(`${API_BASE_URL}/practice/report`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        notes,
-      }),
-    })
-
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => null)
-      const detail = errorPayload?.detail || `Failed to generate report: ${response.status}`
-      throw new Error(detail)
-    }
-
-    const blob = await response.blob()
-    const contentDisposition = response.headers.get("Content-Disposition") || ""
-    const filenameMatch = /filename="([^"]+)"/.exec(contentDisposition)
-    const filename =
-      filenameMatch?.[1] || `practice-report-${new Date().toISOString().slice(0, 10)}.pdf`
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-
-    link.href = url
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  } catch (error) {
-    console.error("Practice report generation failed:", error)
-    practiceReportError.value = error.message || "Could not generate practice report."
-  } finally {
-    isGeneratingPracticeReport.value = false
-  }
-}
-
-function exportGameData() {
-  const rows = [
-    ["Name", "Number", "Minutes", "Fouls"],
-    ...availablePlayers.value.map((player) => [
-      player.name,
-      player.number,
-      (player.totalSeconds / 60).toFixed(1),
-      player.fouls,
-    ]),
-  ]
-
-  const csv = rows
-    .map((row) =>
-      row
-        .map((cell) => `"${String(cell).replaceAll('"', '""')}"`)
-        .join(","),
-    )
-    .join("\n")
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement("a")
-
-  link.href = url
-  link.download = `Stats_${new Date().toISOString().slice(0, 10)}.csv`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-}
-
-watch(currentView, async (view) => {
-  if (view === "practice" && !isInitializing.value && !initializationError.value) {
-    await syncInjuriesState({ silent: true })
-    await syncPracticeState({ silent: true })
-    startPracticeSync()
-  } else {
-    stopPracticeSync()
-  }
-
-  if (view === "game" && !isInitializing.value && !initializationError.value) {
-    await syncInjuriesState({ silent: true })
-    await syncGameState({ silent: true })
-    startGameSync()
-  } else {
-    stopGameSync()
-  }
-
-  if (view === "injuries" && !isInitializing.value && !initializationError.value) {
-    await syncInjuriesState({ silent: true })
-  }
-})
-
-function togglePlayerOnCourt(playerId) {
-  sendGameCommand(`/game/players/${playerId}/toggle`)
-}
-
-function handleMainAction() {
-  const onCourtCount = availablePlayers.value.filter((player) => player.isOnCourt).length
-
-  if (gameState.value === "SETUP" && onCourtCount !== 5) {
-    const confirmed = window.confirm(`Starts with ${onCourtCount} players. Continue?`)
-    if (!confirmed) {
-      return
-    }
-
-    sendGameCommand("/game/main-action", { allowShortHanded: true })
-    return
-  }
-
-  sendGameCommand("/game/main-action", { allowShortHanded: false })
-}
-
-function adjustFoul(playerId, delta) {
-  sendGameCommand(`/game/players/${playerId}/fouls`, { delta })
-}
-
-function syncGameClock(newSeconds) {
-  sendGameCommand("/game/clock/sync", { seconds: newSeconds })
-}
-
-function applyOptimisticGameClockAdjustment(delta) {
-  const previousClockSeconds = gameClockSeconds.value
-  const nextClockSeconds = Math.max(0, previousClockSeconds + delta)
-  const playerTimeDelta = previousClockSeconds - nextClockSeconds
-
-  gameClockSeconds.value = nextClockSeconds
-
-  if (playerTimeDelta !== 0) {
-    players.value = players.value.map((player) => {
-      if (!player.isOnCourt) {
-        return player
-      }
-
-      return {
-        ...player,
-        currentStint: Math.max(0, player.currentStint + playerTimeDelta),
-        totalSeconds: Math.max(0, player.totalSeconds + playerTimeDelta),
-      }
-    })
-  }
-
-  return nextClockSeconds - previousClockSeconds
-}
-
-async function flushGameClockAdjustments() {
-  if (isSavingGameClockAdjustment.value || pendingGameClockDelta.value === 0) {
-    return
-  }
-
-  isSavingGameClockAdjustment.value = true
-  isGameSyncing.value = true
-  latestGameRequestId.value += 1
-  let shouldRefreshFromServer = false
-
-  try {
-    while (pendingGameClockDelta.value !== 0) {
-      const delta = pendingGameClockDelta.value
-      pendingGameClockDelta.value = 0
-
-      const response = await fetch(`${API_BASE_URL}/game/clock/adjust`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ delta }),
-      })
-
-      if (!response.ok) {
-        const errorPayload = await response.json().catch(() => null)
-        const detail = errorPayload?.detail || `Failed to adjust game clock: ${response.status}`
-        throw new Error(detail)
-      }
-
-      applyGameSnapshot(await response.json())
-
-      if (pendingGameClockDelta.value !== 0) {
-        applyOptimisticGameClockAdjustment(pendingGameClockDelta.value)
-      }
-
-      gameSyncError.value = ""
-    }
-  } catch (error) {
-    console.error("Game clock adjustment failed:", error)
-    gameSyncError.value = error.message || "Could not adjust the game clock."
-    pendingGameClockDelta.value = 0
-    shouldRefreshFromServer = true
-  } finally {
-    isSavingGameClockAdjustment.value = false
-    isGameSyncing.value = false
-  }
-
-  if (shouldRefreshFromServer) {
-    syncGameState({ silent: true })
-  }
-}
-
-function adjustGameClock(delta) {
-  const appliedDelta = applyOptimisticGameClockAdjustment(delta)
-  if (appliedDelta === 0) {
-    return
-  }
-
-  pendingGameClockDelta.value += appliedDelta
-  flushGameClockAdjustments()
-}
-
-function resetHalf() {
-  const confirmed = window.confirm("Start 2nd Half?")
-  if (!confirmed) return
-
-  sendGameCommand("/game/reset-half")
-}
-
-function resetGameSetup() {
-  const confirmed = window.confirm("New Game? This will clear all shared game data.")
-  if (!confirmed) return
-
-  sendGameCommand("/game/reset")
-}
-
-function addInjuredPlayer(playerId) {
-  sendInjuriesCommand(`/injuries/players/${playerId}`)
-}
-
-function removeInjuredPlayer(playerId) {
-  sendInjuriesCommand(`/injuries/players/${playerId}`, { method: "DELETE" })
-}
-
-function clearInjuredPlayers() {
-  sendInjuriesCommand("/injuries/reset")
-}
+function handlePageHide() { refreshClock(); persist() }
+function handleVisibility() { if (!document.hidden) refreshClock(); else handlePageHide() }
 
 onMounted(() => {
-  initializeAppState()
+  tickTimer = setInterval(refreshClock, 100)
+  document.addEventListener('visibilitychange', handleVisibility)
+  window.addEventListener('pagehide', handlePageHide)
 })
-
 onBeforeUnmount(() => {
-  stopPracticeSync()
-  stopGameSync()
+  clearInterval(tickTimer)
+  clearTimeout(saveTimer)
+  clearTimeout(noticeTimer)
+  document.removeEventListener('visibilitychange', handleVisibility)
+  window.removeEventListener('pagehide', handlePageHide)
+  persist()
 })
 </script>
 
 <template>
-  <div
-    v-if="isInitializing"
-    class="min-h-screen flex items-center justify-center bg-[#0f2218] text-white px-6 text-center"
-  >
-    <div>
-      <div class="text-3xl font-black uppercase tracking-wider">
-        Loading Roster
-      </div>
-      <p class="mt-3 text-sm text-green-200">
-        Connecting to the FastAPI backend...
-      </p>
-    </div>
+  <div class="app-shell">
+    <header class="app-header">
+      <a class="brand" href="#game" @click.prevent="changeView('game')" aria-label="Drew Rangers game desk">
+        <img src="/icon.png" alt="" width="42" height="42" />
+        <span><strong>DREW RANGERS</strong><small>MEN’S BASKETBALL</small></span>
+      </a>
+      <nav class="mode-nav" aria-label="Tracking mode">
+        <button :aria-current="view === 'game' ? 'page' : undefined" :class="{ active: view === 'game' }" @click="changeView('game')">Game day</button>
+        <button :aria-current="view === 'practice' ? 'page' : undefined" :class="{ active: view === 'practice' }" @click="changeView('practice')">Practice</button>
+      </nav>
+      <span class="header-note"><span class="status-dot"></span> Courtside, simplified.</span>
+    </header>
+
+    <p v-if="storageWarning" role="alert" class="storage-warning">{{ storageWarning }}</p>
+    <GameView v-if="view === 'game'" :players="players" :session="session" :can-undo="history.length > 0"
+      @action="act" @undo="undo" @new-game="newGame" />
+    <PracticeView v-else :players="players" @update-stat="updatePractice" @reset="resetPractice" />
+    <div class="toast" role="status" aria-live="polite" aria-atomic="true" :class="{ visible: notice }">{{ notice }}</div>
   </div>
-
-  <div
-    v-else-if="initializationError"
-    class="min-h-screen flex items-center justify-center bg-[#2a1111] text-white px-6"
-  >
-    <div class="max-w-lg text-center">
-      <div class="text-3xl font-black uppercase tracking-wider text-red-200">
-        Backend Unavailable
-      </div>
-      <p class="mt-3 text-sm text-red-100">
-        {{ initializationError }}
-      </p>
-      <button
-        class="mt-6 bg-white/10 hover:bg-white/20 border border-white/20 px-5 py-2 rounded font-bold uppercase tracking-wide transition-colors"
-        @click="initializeAppState"
-      >
-        Retry
-      </button>
-    </div>
-  </div>
-
-  <LandingView
-    v-else-if="currentView === 'landing'"
-    @switch-view="switchView"
-  />
-
-  <AdminReviewView
-    v-else-if="currentView === 'admin'"
-    :api-base-url="API_BASE_URL"
-    @switch-view="switchView"
-  />
-
-  <InjuriesView
-    v-else-if="currentView === 'injuries'"
-    :players="players"
-    :injured-player-ids="injuredPlayerIds"
-    :is-syncing="isInjuriesSyncing"
-    :sync-error="injuriesSyncError"
-    @switch-view="switchView"
-    @add-injured-player="addInjuredPlayer"
-    @remove-injured-player="removeInjuredPlayer"
-    @clear-injured-players="clearInjuredPlayers"
-  />
-
-  <PracticeView
-    v-else-if="currentView === 'practice'"
-    :players="availablePlayers"
-    :sort-mode="practiceSortMode"
-    :is-syncing="isPracticeSyncing"
-    :sync-error="practiceSyncError"
-    :is-generating-report="isGeneratingPracticeReport"
-    :report-error="practiceReportError"
-    @switch-view="switchView"
-    @update-practice-stat="updatePracticeStat"
-    @sort-practice="sortPracticePlayers"
-    @reset-practice="resetPractice"
-    @generate-report="generatePracticeReport"
-  />
-
-  <GameView
-    v-else-if="currentView === 'game'"
-    :players="availablePlayers"
-    :game-clock-seconds="gameClockSeconds"
-    :game-state="gameState"
-    :status-text-override="gameStatusText"
-    :main-button-text-override="gameMainButtonText"
-    :sync-error="gameSyncError"
-    @switch-view="switchView"
-    @toggle-player="togglePlayerOnCourt"
-    @main-action="handleMainAction"
-    @reset-game="resetGameSetup"
-    @reset-half="resetHalf"
-    @adjust-foul="adjustFoul"
-    @adjust-clock="adjustGameClock"
-    @sync-clock="syncGameClock"
-    @export-game="exportGameData"
-  />
 </template>

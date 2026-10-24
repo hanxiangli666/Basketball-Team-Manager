@@ -1,106 +1,46 @@
-# Basketball Team Manager
+# Drew Rangers · Courtside Desk
 
-A production-oriented operations tool for Drew men's basketball. The app helps coaches and staff manage practice stats, game rotations, injuries, roster review, and reporting from one lightweight web interface.
+A browser-only game rotation tracker for Drew men's basketball. Game day opens directly, with an optional practice tab.
 
-Deployment is currently in private testing.
+## Game day
 
-## Problem
+- Large start/stop control, separated ±1 / ±10 second buttons, and an exact-time editor available while paused.
+- A compact clock bar remains available when scrolling through the lineup or bench.
+- Timestamp-based countdown with millisecond-accurate substitutions. A delayed callback does not lose playing time.
+- Current stint, total minutes, player fouls and bench rest time.
+- Select **Sub out**, choose a replacement, then **Confirm swap**. Both players change at the same instant. Player photos and cards never trigger substitutions.
+- **Off court only** supports short-handed lineups. Starting with fewer than five requires confirmation.
+- Undo recent substitutions, foul changes and clock corrections. Starting/stopping the clock, changing periods, refreshing or starting a new game clears undo history.
+- Two 20-minute halves and 5-minute overtime periods. Next period preserves total minutes and fouls, and resets stints. Period changes and new games require confirmation.
+- Duplicate taps within 350 ms are ignored for the same control.
 
-Team operations often happen across spreadsheets, manual notes, and ad-hoc game-day decisions. This project turns that workflow into a deployable web app with persistent data, admin review, scheduled roster sync, and test-covered game logic.
+Clock corrections adjust the active lineup's recorded time by the same amount. Pregame clock setup does not award playing time. When the clock reaches zero it stops automatically.
 
-## What It Includes
+## Local data
 
-- **Landing view:** main navigation into practice, game, injuries, and admin workflows.
-- **Practice view:** player practice stats, ranking views, resets, and PDF practice report generation.
-- **Game view:** on-court rotation control, game clock state, fouls, half resets, player toggles, and CSV-style operational data.
-- **Injuries view:** tracks unavailable players and keeps game/practice workflows aligned.
-- **Admin review:** syncs Drew roster data, reviews new players, manages positions, active status, and image paths.
-- **Roster automation:** a standalone Cloudflare Worker Cron periodically syncs roster data from the source site.
+Game state and practice stats are saved in `localStorage` on the current browser and origin. Reloading a running game catches up from its saved timestamp, capped at the end of the period. Pausing before leaving the page keeps the game paused. Clearing browser data removes the saved game. Devices and browser tabs do not share live game state; use one tab as the game desk.
 
-## Architecture
+There are no API requests, database requirements, admin pages, injury tracking, reports, or CSV exports. The previous Cloudflare database is not modified or migrated into local storage. Historical SQL migrations remain as a record of the previous schema; the static app does not execute them. Any separately deployed legacy roster-sync Worker must be disabled separately in Cloudflare if it is still running.
 
-```text
-Vue 3 / Vite frontend
-        |
-        v
-Cloudflare Pages Functions API
-        |
-        v
-Cloudflare D1 database
+## Roster updates
 
-Worker Cron -> roster sync service -> D1
-```
+Edit `src/data/roster.js` and place supplied photos in `public/Photos/`. Keep IDs stable for returning players and assign new IDs to new players. Names, jersey numbers, positions and photos come from this file, so an old saved game cannot overwrite roster updates. The current roster is retained until the new season's changes are confirmed.
 
-## Tech Stack
+## Development
 
-- **Frontend:** Vue 3, Vite, Tailwind CSS
-- **API:** Cloudflare Pages Functions
-- **Database:** Cloudflare D1
-- **Automation:** Cloudflare Worker Cron Trigger
-- **Testing:** Node test runner for API, roster parsing, and game-state logic
-- **Reporting:** text-to-PDF practice report generator
-
-## Repository Map
-
-```text
-functions/api/[[path]].js       Cloudflare Pages Functions entrypoint
-migrations/                     D1 schema and seed data
-src/components/                 Practice, game, injuries, landing, admin views
-src/cloudflare/api.js           API router
-src/cloudflare/d1.js            D1 service layer
-src/cloudflare/game-state.js    Rotation and clock business logic
-src/cloudflare/roster.js        Roster fetch, parse, and diff logic
-tests/cloudflare/               Node tests
-workers/roster-sync.js          Scheduled roster sync worker
-wrangler.toml                   Pages + D1 config
-wrangler.roster-sync.toml       Worker Cron config
-```
-
-## API Surface
-
-Representative endpoints:
-
-- `GET /api/players`
-- `GET /api/practice`
-- `POST /api/practice/{player_id}`
-- `POST /api/practice/report`
-- `GET /api/game`
-- `POST /api/game/main-action`
-- `POST /api/game/players/{player_id}/toggle`
-- `GET /api/injuries`
-- `GET /api/admin/roster-review`
-
-Admin endpoints require an `x-admin-token` header.
-
-## Run Locally
+Requires Node.js 22.12+ or a compatible current LTS version.
 
 ```powershell
-npm install
+npm ci
 npm run dev
-```
-
-Run tests:
-
-```powershell
 npm test
-```
-
-Build:
-
-```powershell
 npm run build
 ```
 
-## Deployment Notes
+The production output is `dist/`. Deploy it as a static website. The retained Cloudflare Pages project name is `drew-tracker-github`; no Functions or D1 binding is needed.
 
-The production Cloudflare Pages project is `drew-tracker-github`.
+Vue 3 handles the interface, while the framework-independent JavaScript engine in `src/game/session.js` handles all game time and rotation changes locally. Vite builds the static bundle.
 
-Before deploying, verify Cloudflare auth and D1 bindings. Do not commit `.dev.vars` or real admin tokens.
+## Development handoff
 
-## What This Project Demonstrates
-
-- Turning a real sports workflow into a full-stack product.
-- Designing a serverless API with Cloudflare Pages Functions and D1.
-- Keeping game-state business logic testable outside the UI.
-- Adding operational automation through Worker Cron.
-- Writing documentation that maps product flows to implementation evidence.
+The 18 game-engine tests pass. Components were compiled and main interactions were checked with a temporary cached Vue preview on Windows. The production Vite build remains unverified because dependency downloads were blocked in that environment. After cloning or pulling on the Mac Mini, run `npm ci`, `npm test`, and `npm run build` before deployment. The temporary preview harness is excluded from Git and is not required to run the project.

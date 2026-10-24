@@ -1,690 +1,188 @@
 <script setup>
-import { computed, ref } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import ConfirmDialog from './ConfirmDialog.vue'
+import { formatTime, periodDuration, periodLabel } from '../game/session.js'
 
-const props = defineProps({
-  players: {
-    type: Array,
-    required: true,
-  },
-  gameClockSeconds: {
-    type: Number,
-    required: true,
-  },
-  gameState: {
-    type: String,
-    required: true,
-  },
-  statusTextOverride: {
-    type: String,
-    default: null,
-  },
-  mainButtonTextOverride: {
-    type: String,
-    default: null,
-  },
-  syncError: {
-    type: String,
-    default: "",
-  },
+const props = defineProps({ players: Array, session: Object, canUndo: Boolean })
+const emit = defineEmits(['action', 'undo', 'new-game'])
+const selectedOutId = ref(null)
+const filter = ref('ALL')
+const modal = ref(null)
+const clockInput = ref('')
+const clockError = ref('')
+const lastTap = new Map()
+const clockPanel = ref(null)
+const showQuickClock = ref(false)
+let clockObserver
+
+const court = computed(() => props.players.filter((player) => player.isOnCourt))
+const bench = computed(() => props.players.filter((player) => !player.isOnCourt))
+const filteredBench = computed(() => bench.value.filter((player) => filter.value === 'ALL'
+  || (filter.value === 'G' && ['PG', 'SG'].includes(player.pos))
+  || (filter.value === 'F' && ['SF', 'PF'].includes(player.pos)) || player.pos === filter.value))
+const selectedOut = computed(() => court.value.find((player) => player.id === selectedOutId.value))
+const live = computed(() => props.session.status === 'PLAYING')
+const ended = computed(() => props.session.clockMs === 0)
+const status = computed(() => ended.value ? 'Period ended' : live.value ? 'Clock running' : props.session.status === 'SETUP' ? 'Ready for tip-off' : 'Clock paused')
+const nextPeriodName = computed(() => props.session.period === 1 ? '2nd half' : props.session.period === 2 ? 'overtime' : 'next overtime')
+const courtFouls = computed(() => props.players.reduce((sum, player) => sum + player.fouls, 0))
+const dialogTitle = computed(() => ({ clock: 'Set the game clock', new: 'Start a new game?', period: `Move to ${nextPeriodName.value}?`, short: 'Start with fewer than five?', swap: 'Confirm substitution', remove: 'Take player off court?' }[modal.value?.type]))
+
+function safeTap(key, fn) {
+  const now = performance.now()
+  if (now - (lastTap.get(key) ?? -1000) < 350) return
+  lastTap.set(key, now)
+  fn()
+}
+function mainAction() {
+  safeTap('main', () => {
+    if (!live.value && court.value.length !== 5) { modal.value = { type: 'short' }; return }
+    emit('action', { type: 'clock' })
+    selectedOutId.value = null
+  })
+}
+function adjustClock(delta) {
+  safeTap(`adjust-${delta}`, () => emit('action', { type: 'adjust-clock', delta, label: `Clock ${delta > 0 ? '+' : '−'}${Math.abs(delta)} second${Math.abs(delta) === 1 ? '' : 's'}` }))
+}
+function openClock() {
+  if (live.value) return
+  clockInput.value = formatTime(props.session.clockMs, true)
+  clockError.value = ''
+  modal.value = { type: 'clock' }
+}
+function chooseCourt(player) {
+  safeTap(`out-${player.id}`, () => {
+    selectedOutId.value = selectedOutId.value === player.id ? null : player.id
+  })
+}
+function chooseBench(player) {
+  safeTap(`in-${player.id}`, () => {
+    if (selectedOut.value) modal.value = { type: 'swap', outgoing: selectedOut.value, incoming: player }
+    else if (court.value.length < 5) emit('action', { type: 'toggle', playerId: player.id, label: `${player.name} on court` })
+  })
+}
+function changeFoul(player, delta) {
+  safeTap(`foul-${player.id}`, () => emit('action', { type: 'foul', playerId: player.id, delta, label: `${player.name}: foul ${delta > 0 ? 'added' : 'removed'}` }))
+}
+function confirmModal() {
+  const choice = modal.value
+  if (choice.type === 'clock') {
+    const match = /^(\d{1,2}):([0-5]\d)$/.exec(clockInput.value.trim())
+    const seconds = match ? Number(match[1]) * 60 + Number(match[2]) : -1
+    if (seconds < 0 || seconds * 1000 > periodDuration(props.session.period)) {
+      clockError.value = `Enter a time from 00:00 to ${formatTime(periodDuration(props.session.period))}.`
+      return
+    }
+    emit('action', { type: 'adjust-clock', seconds, label: `Clock set to ${clockInput.value.trim()}` })
+  } else if (choice.type === 'swap') {
+    emit('action', { type: 'swap', outId: choice.outgoing.id, playerId: choice.incoming.id, label: `${choice.incoming.name} in · ${choice.outgoing.name} out` })
+  } else if (choice.type === 'remove') {
+    emit('action', { type: 'toggle', playerId: choice.outgoing.id, label: `${choice.outgoing.name} off court` })
+  } else if (choice.type === 'short') emit('action', { type: 'clock', allowShortHanded: true })
+  else if (choice.type === 'period') emit('action', { type: 'next-period', label: `${nextPeriodName.value} ready` })
+  else if (choice.type === 'new') emit('new-game')
+  selectedOutId.value = null
+  modal.value = null
+}
+function photoFallback(event) { event.target.onerror = null; event.target.src = '/icon.png' }
+onMounted(() => {
+  clockObserver = new IntersectionObserver(([entry]) => { showQuickClock.value = !entry.isIntersecting }, { threshold: 0 })
+  clockObserver.observe(clockPanel.value)
 })
-
-const emit = defineEmits([
-  "switch-view",
-  "toggle-player",
-  "main-action",
-  "reset-game",
-  "reset-half",
-  "adjust-foul",
-  "adjust-clock",
-  "sync-clock",
-  "export-game",
-])
-
-const isBenchOpen = ref(false)
-const detailPlayerId = ref(null)
-
-const detailPlayer = computed(() =>
-  props.players.find((player) => player.id === detailPlayerId.value)
-)
-
-const onCourtPlayers = computed(() =>
-  [...props.players]
-    .filter((player) => player.isOnCourt)
-    .sort((a, b) => b.currentStint - a.currentStint)
-)
-
-const benchPlayers = computed(() =>
-  props.players.filter((player) => !player.isOnCourt)
-)
-
-const onCourtCount = computed(() => onCourtPlayers.value.length)
-
-const posOrder = ["PG", "SG", "SF", "PF", "C"]
-
-const posNames = {
-  PG: "Point Guards",
-  SG: "Shooting Guards",
-  SF: "Small Forwards",
-  PF: "Power Forwards",
-  C: "Centers",
-}
-
-const benchPlayersByPosition = computed(() => {
-  return posOrder
-    .map((pos) => {
-      const players = benchPlayers.value
-        .filter((player) => player.pos === pos)
-        .sort((a, b) => a.id - b.id)
-
-      return {
-        pos,
-        title: posNames[pos],
-        players,
-      }
-    })
-    .filter((group) => group.players.length > 0)
-})
-
-const statusText = computed(() => {
-  if (props.statusTextOverride) return props.statusTextOverride
-  if (props.gameState === "SETUP") return "PRE-GAME SETUP"
-  if (props.gameState === "PAUSED") return "PAUSED"
-  if (props.gameState === "PLAYING") return "LIVE"
-  return "UNKNOWN"
-})
-
-const statusClass = computed(() => {
-  if (props.gameState === "PLAYING") {
-    return "text-[10px] font-bold text-red-400 uppercase tracking-widest animate-pulse"
-  }
-
-  if (props.statusTextOverride === "HALF ENDED") {
-    return "text-[10px] font-bold text-red-300 uppercase tracking-widest"
-  }
-
-  if (props.statusTextOverride === "READY") {
-    return "text-[10px] font-bold text-green-300 uppercase tracking-widest"
-  }
-
-  if (props.gameState === "PAUSED") {
-    return "text-[10px] font-bold text-yellow-300 uppercase tracking-widest"
-  }
-
-  return "text-[10px] font-bold text-green-300 uppercase tracking-widest"
-})
-
-const mainButtonText = computed(() => {
-  if (props.gameState === "SETUP") return "CONFIRM STARTERS"
-  if (props.mainButtonTextOverride) return props.mainButtonTextOverride
-  if (props.gameState === "PAUSED") return "START CLOCK"
-  if (props.gameState === "PLAYING") return "STOP CLOCK"
-  return "ACTION"
-})
-
-const mainButtonClass = computed(() => {
-  const base =
-    "flex-1 text-white py-2 rounded font-bold text-base shadow-sm transition-colors border-b-4 active:border-b-0 active:translate-y-1"
-
-  if (props.gameState === "SETUP") {
-    return `${base} bg-[#002f6c] hover:bg-[#003d8c] border-[#001f4c]`
-  }
-
-  if (props.mainButtonTextOverride === "START 2ND HALF") {
-    return `${base} bg-[#002f6c] hover:bg-[#003d8c] border-[#001f4c]`
-  }
-
-  if (props.mainButtonTextOverride === "HALF ENDED") {
-    return `${base} bg-red-700 hover:bg-red-600 border-red-900`
-  }
-
-  if (props.gameState === "PAUSED") {
-    return `${base} bg-green-600 hover:bg-green-700 border-green-800`
-  }
-
-  if (props.gameState === "PLAYING") {
-    return `${base} bg-red-600 hover:bg-red-700 border-red-800 animate-pulse`
-  }
-
-  return `${base} bg-gray-600 hover:bg-gray-700 border-gray-800`
-})
-
-function formatClock(totalSeconds) {
-  const m = Math.floor(totalSeconds / 60)
-    .toString()
-    .padStart(2, "0")
-  const s = (totalSeconds % 60).toString().padStart(2, "0")
-  return `${m}:${s}`
-}
-
-function handleBenchPlayerClick(playerId) {
-  emit("toggle-player", playerId)
-
-  if (window.innerWidth < 768) {
-    isBenchOpen.value = false
-  }
-}
-
-function openPlayerDetail(playerId) {
-  detailPlayerId.value = playerId
-}
-
-function closePlayerDetail() {
-  detailPlayerId.value = null
-}
-
-function getRestTime(player) {
-  if (player.isOnCourt) return player.currentStint
-  if (player.subOutGameClock !== null) {
-    return Math.max(0, player.subOutGameClock - props.gameClockSeconds)
-  }
-
-  return 0
-}
-
-function getAlertClass(player) {
-  if (player.currentStint >= 240) return "alert-level-3"
-  if (player.currentStint >= 180) return "alert-level-2"
-  if (player.currentStint >= 120) return "alert-level-1"
-  return ""
-}
-
-function syncClockManual() {
-  const input = window.prompt(
-    "SYNC: Enter scoreboard time (mm:ss).",
-    formatClock(props.gameClockSeconds)
-  )
-
-  if (!input) return
-
-  const parts = input.split(":")
-  if (parts.length !== 2) return
-
-  const minutes = Number.parseInt(parts[0], 10)
-  const seconds = Number.parseInt(parts[1], 10)
-
-  if (Number.isNaN(minutes) || Number.isNaN(seconds) || seconds < 0 || seconds > 59) {
-    window.alert("Please enter time as mm:ss.")
-    return
-  }
-
-  emit("sync-clock", minutes * 60 + seconds)
-}
-
-function handleBackClick() {
-  const confirmed = window.confirm("Return to Main Menu?")
-  if (confirmed) {
-    emit("switch-view", "landing")
-  }
-}
+onBeforeUnmount(() => clockObserver?.disconnect())
 </script>
 
 <template>
-  <div class="h-[100dvh] md:h-screen flex flex-col overflow-hidden bg-gray-100">
-    <div class="shrink-0 shadow-xl bg-white">
-      <div class="bg-[#144935] text-white px-3 sm:px-4 min-h-16 pt-[env(safe-area-inset-top)] flex justify-between items-center border-b border-[#0e3325] relative">
-        <div class="flex min-w-0 items-center gap-2 sm:gap-3 z-10">
-          <button
-            @click="handleBackClick"
-            class="flex items-center text-green-300 hover:text-white transition-colors"
-            title="Back to Menu"
-          >
-            <span class="ml-1 text-xs font-bold uppercase">Menu</span>
-          </button>
+  <main class="desk">
+    <div v-if="showQuickClock" class="quick-clock" role="group" aria-label="Quick clock controls">
+      <strong class="quick-clock-time">{{ formatTime(session.clockMs, true) }}</strong>
+      <div class="quick-adjustments"><button class="adjust-button" :disabled="ended" aria-label="Quick subtract 1 second" @click="adjustClock(-1)">−1</button><button class="adjust-button" :disabled="session.clockMs >= periodDuration(session.period)" aria-label="Quick add 1 second" @click="adjustClock(1)">+1</button></div>
+      <button class="main-clock-button" :class="{ running: live }" :disabled="ended" @click="mainAction">{{ ended ? 'Ended' : live ? 'Stop clock' : 'Start clock' }}</button>
+    </div>
+    <div class="page-heading">
+      <div><p class="eyebrow">THE COURTSIDE DESK</p><h1>Game day<span class="heading-dot">.</span></h1></div>
+      <div class="game-meta"><span class="pill">{{ periodLabel(session.period) }}</span><span class="local-label">Saved on this device</span></div>
+    </div>
 
-          <div>
-            <h1 class="text-lg sm:text-xl font-extrabold tracking-tight leading-none">
-              DREW MBB
-            </h1>
-            <span :class="statusClass">
-              {{ statusText }}
-            </span>
-            <div class="text-[9px] uppercase tracking-[0.24em] text-green-200 mt-0.5">
-              {{ syncError || "Live sync connected" }}
-            </div>
-          </div>
-        </div>
-
-        <div class="absolute left-1/2 -translate-x-1/2 hidden md:block pointer-events-none">
-          <img
-            src="/Background.jpg"
-            alt="Logo"
-            class="h-12 object-contain drop-shadow-md rounded"
-          />
-        </div>
-
-        <div class="flex flex-col items-end z-10">
-          <button
-            class="text-2xl sm:text-3xl font-mono font-black tracking-tighter leading-none hover:text-green-300 transition-colors cursor-pointer"
-            title="Click to Edit Time"
-            @click="syncClockManual"
-          >
-            {{ formatClock(gameClockSeconds) }}
-          </button>
-
-          <div class="flex gap-2 items-center mt-1">
-            <button
-              class="min-h-8 touch-manipulation text-[9px] text-green-200 cursor-pointer hover:text-white"
-              @click="syncClockManual"
-            >
-              TAP TO SYNC
-            </button>
-
-            <div class="flex gap-1">
-              <button
-                class="min-w-10 min-h-8 touch-manipulation flex items-center justify-center text-[10px] font-bold bg-white/10 hover:bg-white/20 active:bg-white/30 border border-white/15 text-white px-2 py-1 rounded-md transition-colors"
-                @click="emit('adjust-clock', 1)"
-              >
-                +1s
-              </button>
-              <button
-                class="min-w-10 min-h-8 touch-manipulation flex items-center justify-center text-[10px] font-bold bg-white/10 hover:bg-white/20 active:bg-white/30 border border-white/15 text-white px-2 py-1 rounded-md transition-colors"
-                @click="emit('adjust-clock', -1)"
-              >
-                -1s
-              </button>
-            </div>
-          </div>
-        </div>
+    <section ref="clockPanel" class="clock-panel" aria-label="Game clock">
+      <div class="clock-readout">
+        <div class="clock-status" :class="{ live, ended }"><span class="status-dot"></span>{{ status }}</div>
+        <div class="clock-digits" role="timer" aria-label="Time remaining" aria-live="off">{{ formatTime(session.clockMs, true) }}</div>
+        <span class="clock-caption">{{ periodLabel(session.period) }} <span> / </span> GAME CLOCK</span>
       </div>
-
-      <div class="bg-white p-2 grid grid-cols-3 md:flex gap-2 border-b border-gray-300">
-        <button :class="[mainButtonClass, 'col-span-3 md:col-auto']" @click="emit('main-action')">
-          {{ mainButtonText }}
+      <div class="clock-controls">
+        <button class="main-clock-button" :class="{ running: live }" :disabled="ended" @click="mainAction">
+          <span aria-hidden="true" class="play-symbol">{{ live ? 'Ⅱ' : '▶' }}</span>
+          <span>{{ ended ? 'Period ended' : live ? 'Stop clock' : 'Start clock' }}</span>
         </button>
-
-        <div class="contents md:flex gap-2">
-          <button
-            class="min-h-10 bg-gray-600 text-white px-2 sm:px-3 py-2 rounded font-semibold text-[11px] sm:text-xs shadow-sm hover:bg-gray-500 transition-colors"
-            @click="emit('export-game')"
-          >
-            Export
-          </button>
-
-          <button
-            class="min-h-10 bg-orange-600 text-white px-2 sm:px-3 py-2 rounded font-semibold text-[11px] sm:text-xs shadow-sm hover:bg-orange-500 transition-colors"
-            @click="emit('reset-half')"
-          >
-            Reset Half
-          </button>
-
-          <button
-            class="min-h-10 bg-red-700 text-white px-2 sm:px-3 py-2 rounded font-semibold text-[11px] sm:text-xs shadow-sm hover:bg-red-600 transition-colors"
-            @click="emit('reset-game')"
-          >
-            New Game
-          </button>
+        <div class="clock-adjustments" aria-label="Adjust remaining game time">
+          <div class="adjustment-pair">
+            <button class="adjust-button" :disabled="ended" aria-label="Subtract 10 seconds" @click="adjustClock(-10)">−10<span>SEC</span></button>
+            <button class="adjust-button" :disabled="ended" aria-label="Subtract 1 second" @click="adjustClock(-1)">−1<span>SEC</span></button>
+          </div>
+          <div class="adjustment-pair">
+            <button class="adjust-button" :disabled="session.clockMs >= periodDuration(session.period)" aria-label="Add 1 second" @click="adjustClock(1)">+1<span>SEC</span></button>
+            <button class="adjust-button" :disabled="session.clockMs >= periodDuration(session.period)" aria-label="Add 10 seconds" @click="adjustClock(10)">+10<span>SEC</span></button>
+          </div>
         </div>
+        <button class="edit-clock" :disabled="live" @click="openClock">Set exact time <span aria-hidden="true">↗</span><span class="edit-hint">{{ live ? 'Pause to edit' : 'Match the scoreboard' }}</span></button>
       </div>
+      <div class="clock-side-note"><span class="vertical-rule"></span><span>Stay in the game.<br /><strong>We’ll track the minutes.</strong></span></div>
+    </section>
+
+    <div class="rotation-toolbar">
+      <p><span class="status-dot"></span><strong>{{ court.length }} on court</strong><span class="toolbar-divider">/</span><span>{{ bench.length }} on bench</span><span class="player-foul-summary"><span class="toolbar-divider">/</span>{{ courtFouls }} player fouls</span></p>
+      <button class="button button-quiet undo-button" :disabled="!canUndo" @click="safeTap('undo', () => emit('undo'))"><span aria-hidden="true">↶</span> Undo last change</button>
     </div>
 
-    <div class="flex-1 flex overflow-hidden relative">
-      <div
-        v-if="isBenchOpen"
-        class="fixed inset-0 bg-black/50 z-40 md:hidden"
-        @click="isBenchOpen = false"
-      ></div>
-
-      <div class="w-full md:w-5/12 flex flex-col bg-gray-50 border-r border-gray-300 relative z-10">
-        <div class="bg-[#002f6c] text-white px-4 py-2 font-extrabold text-sm tracking-wider flex justify-between items-center border-b-4 border-[#57a51d]">
-          <span>ON COURT</span>
-          <span class="bg-green-600 text-white px-2 py-0.5 rounded text-sm">
-            {{ onCourtCount }}/5
-          </span>
-        </div>
-
-        <div class="mobile-scroll flex-1 p-2 overflow-y-auto flex flex-col gap-2">
-          <div
-            v-for="player in onCourtPlayers"
-            :key="player.id"
-            :class="[
-              'bg-[#002f6c] text-white border-l-[6px] border-[#57a51d] rounded-md flex items-center gap-2 p-2 cursor-pointer shadow relative overflow-hidden',
-              getAlertClass(player)
-            ]"
-            @click="emit('toggle-player', player.id)"
-          >
-            <button
-              class="photo-frame w-12 h-16 sm:w-16 sm:h-20 rounded border-2 border-white shrink-0 relative bg-gray-200 overflow-hidden"
-              @click.stop="openPlayerDetail(player.id)"
-            >
-              <img
-                :src="player.img"
-                class="w-full h-full object-cover object-top"
-              />
-              <span class="absolute bottom-0 left-0 w-full text-center bg-black/70 text-white text-[9px] font-bold py-0.5">
-                #{{ player.number }}
-              </span>
-            </button>
-
-            <div class="flex-1 flex flex-col justify-center h-full min-w-0">
-              <div class="mb-1">
-                <h3 class="font-bold text-sm leading-tight text-white truncate">
-                  {{ player.name.split(" ")[0] }}
-                </h3>
-                <h3 class="font-bold text-xs leading-tight text-blue-200 opacity-90 truncate">
-                  {{ player.name.split(" ").slice(1).join(" ") }}
-                </h3>
-              </div>
-
-              <div class="flex items-baseline gap-1">
-                <div class="text-[8px] text-green-400 font-bold uppercase">
-                  Stint
-                </div>
-                <div class="text-xl sm:text-2xl font-mono font-black text-white leading-none">
-                  {{ formatClock(player.currentStint) }}
-                </div>
-              </div>
-            </div>
-
-            <div class="flex flex-col items-end justify-between border-l border-blue-900/50 pl-1 h-full py-1 gap-2 shrink-0">
-              <div class="flex items-center gap-1 bg-blue-900/40 rounded px-1 py-0.5">
-                <span class="text-[8px] text-blue-300 font-bold uppercase">Fouls</span>
-
-                <span
-                  :class="[
-                    'text-lg font-bold leading-none min-w-[18px] text-center',
-                    player.fouls >= 5 ? 'text-red-400' : 'text-white'
-                  ]"
-                >
-                  {{ player.fouls }}
-                </span>
-
-                <div class="flex flex-col gap-px ml-1">
-                  <button
-                    class="w-4 h-4 bg-red-600 hover:bg-red-500 text-white rounded flex items-center justify-center text-[10px]"
-                    @click.stop="emit('adjust-foul', player.id, 1)"
-                  >
-                    +
-                  </button>
-                  <button
-                    class="w-4 h-4 bg-red-900 hover:bg-red-800 text-white rounded flex items-center justify-center text-[10px]"
-                    @click.stop="emit('adjust-foul', player.id, -1)"
-                  >
-                    -
-                  </button>
-                </div>
-              </div>
-
-              <div class="text-[9px] text-blue-200">
-                Total:
-                <span class="font-mono font-bold text-white text-sm">
-                  {{ Math.floor(player.totalSeconds / 60) }}
-                </span>m
-              </div>
-            </div>
-          </div>
-
-          <div
-            v-if="onCourtPlayers.length === 0"
-            class="text-gray-400 text-sm text-center mt-6"
-          >
-            No players on court
-          </div>
-        </div>
-      </div>
-
-      <div
-        :class="[
-          'fixed inset-y-0 right-0 w-[min(90vw,24rem)] max-w-none bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out md:static md:w-7/12 md:max-w-none md:translate-x-0 md:shadow-none md:z-auto flex flex-col',
-          isBenchOpen ? 'translate-x-0' : 'translate-x-full'
-        ]"
-      >
-        <div class="bg-gray-100 text-gray-600 px-4 py-2 font-extrabold text-sm tracking-wider border-b border-gray-300 flex justify-between items-center h-10">
-          <span>BENCH</span>
-
-          <button
-            class="md:hidden text-xs font-bold text-gray-500 flex items-center gap-1 px-2 py-1 bg-gray-200 rounded"
-            @click="isBenchOpen = false"
-          >
-            CLOSE >
-          </button>
-        </div>
-
-        <div class="mobile-scroll flex-1 p-2 overflow-y-auto flex flex-col gap-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-          <div
-            v-for="group in benchPlayersByPosition"
-            :key="group.pos"
-          >
-            <div class="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1 mb-1 px-1">
-              {{ group.title }}
-            </div>
-
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 mb-2">
-              <div
-                v-for="player in group.players"
-                :key="player.id"
-                class="bg-white text-gray-700 border border-gray-200 rounded p-1 cursor-pointer hover:border-green-500 shadow-sm flex flex-col items-center relative pb-2"
-                @click="handleBenchPlayerClick(player.id)"
-              >
-                <button
-                  class="photo-frame w-full rounded mb-1 relative border border-gray-100 overflow-hidden bg-gray-200 aspect-[3/4]"
-                  @click.stop="openPlayerDetail(player.id)"
-                >
-                  <img
-                    :src="player.img"
-                    class="w-full h-full object-cover object-top grayscale-[20%]"
-                  />
-                  <span class="absolute bottom-0 right-0 bg-gray-700 text-white text-[9px] px-1 font-bold shadow">
-                    #{{ player.number }}
-                  </span>
-                </button>
-
-                <h3 class="text-[9px] font-bold text-center truncate w-full leading-tight px-0.5 mb-1">
-                  {{ player.name }}
-                </h3>
-
-                <div class="flex justify-between w-full px-1 items-center bg-gray-50 rounded py-0.5">
-                  <span class="text-[9px] font-mono text-gray-500">
-                    {{ Math.floor(player.totalSeconds / 60) }}m
-                  </span>
-                  <div
-                    :class="[
-                      'flex items-center gap-0.5',
-                      player.fouls >= 5 ? 'text-red-500 font-black' : 'text-gray-500'
-                    ]"
-                  >
-                    <span class="text-[8px] font-bold opacity-70">F:</span>
-                    <span class="text-[9px] font-bold">{{ player.fouls }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <button
-        class="md:hidden fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-4 z-30 bg-[#002f6c] text-white px-4 py-3 rounded-full shadow-lg font-bold flex items-center gap-2 border-2 border-white active:scale-95 transition-transform"
-        @click="isBenchOpen = true"
-      >
-        &lt; BENCH
-      </button>
+    <div v-if="selectedOut" class="substitution-strip" role="status">
+      <span><strong>#{{ selectedOut.number }} {{ selectedOut.name }}</strong> selected. Choose a replacement from the bench.</span>
+      <div class="strip-actions"><button class="button button-quiet" @click="modal = { type: 'remove', outgoing: selectedOut }">Off court only</button><button class="button button-green" @click="selectedOutId = null">Cancel</button></div>
     </div>
 
-    <div
-      v-if="detailPlayer"
-      class="fixed inset-0 z-[100] flex items-center justify-center px-4"
-    >
-      <div
-        class="absolute inset-0 bg-black/70 md:backdrop-blur-sm"
-        @click="closePlayerDetail"
-      ></div>
-
-      <div class="relative bg-white w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-        <div class="bg-[#144935] p-5 text-white text-center relative border-b-4 border-[#57a51d]">
-          <button
-            class="absolute top-3 right-3 text-green-200 hover:text-white bg-white/10 rounded-full w-8 h-8 flex items-center justify-center transition-colors"
-            @click="closePlayerDetail"
-          >
-            x
-          </button>
-
-          <div class="w-24 h-32 mx-auto border-4 border-white/30 rounded-lg shadow-xl overflow-hidden mb-3 bg-gray-300">
-            <img
-              :src="detailPlayer.img"
-              class="w-full h-full object-cover object-top"
-            />
-          </div>
-
-          <h2 class="text-xl font-black uppercase italic tracking-tighter leading-none mb-1">
-            {{ detailPlayer.name }}
-          </h2>
-
-          <div class="inline-block bg-[#57a51d] text-[#002f6c] px-2 py-0.5 rounded text-[10px] font-black tracking-widest uppercase">
-            Number {{ detailPlayer.number }}
-          </div>
+    <div class="rotation-layout">
+      <section class="court-section" aria-labelledby="court-title">
+        <div class="section-heading"><h2 id="court-title"><span class="court-marker" aria-hidden="true"></span>On court <span class="count-badge">{{ court.length }}/5</span></h2><span class="section-note">CURRENT ROTATION</span></div>
+        <div class="court-list">
+          <article v-for="player in court" :key="player.id" class="court-player" :class="{ selected: selectedOutId === player.id, 'long-stint': player.stintMs >= 240000 }">
+            <div class="player-portrait"><img :src="player.img" :alt="player.name" @error="photoFallback" /><span>#{{ player.number }}</span></div>
+            <div class="court-player-info"><span class="position-label">{{ player.pos }}</span><h3>{{ player.name }}</h3><span v-if="player.stintMs >= 240000" class="stint-note">4+ min on court</span><span v-else class="player-state">On court</span><span class="compact-total">Total {{ formatTime(player.totalMs) }}</span></div>
+            <div class="time-stat"><span>THIS STINT</span><strong :class="{ 'time-warning': player.stintMs >= 240000 }">{{ formatTime(player.stintMs) }}</strong></div>
+            <div class="time-stat total-stat"><span>TOTAL</span><strong>{{ formatTime(player.totalMs) }}</strong></div>
+            <div class="foul-control"><span class="stat-label">FOULS</span><div><button :aria-label="`Remove foul for ${player.name}`" :disabled="player.fouls === 0" @click="changeFoul(player, -1)">−</button><strong :class="{ 'foul-warning': player.fouls >= 4 }">{{ player.fouls }}</strong><button :aria-label="`Add foul for ${player.name}`" :disabled="player.fouls >= 5" @click="changeFoul(player, 1)">+</button></div></div>
+            <button class="button sub-out-button" :aria-pressed="selectedOutId === player.id" :aria-label="`Sub out ${player.name}`" @click="chooseCourt(player)">{{ selectedOutId === player.id ? 'Selected' : 'Sub out' }}<span aria-hidden="true">↗</span></button>
+          </article>
+          <div v-for="slot in Math.max(0, 5 - court.length)" :key="`empty-${slot}`" class="empty-court"><span aria-hidden="true">+</span><div><strong>Open spot</strong><p>Choose a player from the bench.</p></div></div>
         </div>
+        <p class="court-footnote">Minutes run with the game clock. Pauses don’t count.</p>
+      </section>
 
-        <div class="p-6 space-y-5">
-          <div class="flex justify-between items-end border-b border-gray-100 pb-3">
-            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Current Status</span>
-            <span
-              :class="[
-                'text-sm uppercase',
-                detailPlayer.isOnCourt ? 'font-black text-[#57a51d]' : 'font-bold text-gray-500'
-              ]"
-            >
-              {{ detailPlayer.isOnCourt ? "CURRENTLY PLAYING" : "ON BENCH" }}
-            </span>
-          </div>
-
-          <div class="flex justify-between items-end border-b border-gray-100 pb-3">
-            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Last Sub Out</span>
-            <div class="text-right">
-              <span class="block font-mono font-bold text-gray-800 text-lg leading-none">
-                {{ detailPlayer.isOnCourt ? "ON COURT" : detailPlayer.lastSubOutClock || "--:--" }}
-              </span>
-              <span class="text-[9px] text-gray-400 font-bold uppercase">Game Clock</span>
-            </div>
-          </div>
-
-          <div class="bg-gray-50 rounded-xl p-4 text-center border border-gray-100 shadow-inner">
-            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">
-              {{ detailPlayer.isOnCourt ? "Active Stint" : "Rest Duration" }}
-            </span>
-            <span
-              :class="[
-                'font-mono font-black text-4xl tracking-tight',
-                detailPlayer.isOnCourt ? 'text-[#57a51d]' : detailPlayer.subOutGameClock !== null ? 'text-[#002f6c]' : 'text-gray-400'
-              ]"
-            >
-              {{ formatClock(getRestTime(detailPlayer)) }}
-            </span>
-            <div class="text-[9px] text-gray-400 mt-1">
-              Based on Game Clock
-            </div>
-          </div>
+      <section class="bench-section" aria-labelledby="bench-title">
+        <div class="section-heading"><h2 id="bench-title">The bench <span class="count-badge">{{ bench.length }}</span></h2><span class="section-note">READY WHEN YOU ARE</span></div>
+        <div class="bench-filters" aria-label="Filter bench by position"><button v-for="option in [{ key: 'ALL', label: 'All players' }, { key: 'G', label: 'Guards' }, { key: 'F', label: 'Forwards' }, { key: 'C', label: 'Centers' }]" :key="option.key" :aria-pressed="filter === option.key" :class="{ active: filter === option.key }" @click="filter = option.key">{{ option.label }}</button></div>
+        <div class="bench-grid">
+          <article v-for="player in filteredBench" :key="player.id" class="bench-player" :class="{ 'fouled-out': player.fouls >= 5 }">
+            <div class="bench-player-top"><div class="bench-portrait"><img :src="player.img" :alt="player.name" loading="lazy" @error="photoFallback" /></div><span class="bench-number">#{{ player.number }}</span><span class="position-label">{{ player.pos }}</span></div>
+            <h3>{{ player.name }}</h3>
+            <div class="bench-stats"><div><span>TOTAL</span><strong>{{ formatTime(player.totalMs) }}</strong></div><div><span>{{ player.hasPlayed ? 'REST' : 'FOULS' }}</span><strong>{{ player.hasPlayed ? formatTime(player.restMs) : player.fouls }}</strong></div></div>
+            <div v-if="player.hasPlayed" class="bench-fouls">{{ player.fouls }} {{ player.fouls === 1 ? 'foul' : 'fouls' }}</div>
+            <button class="button sub-in-button" :disabled="player.fouls >= 5 || (!selectedOut && court.length >= 5)" :aria-label="`Sub in ${player.name}`" @click="chooseBench(player)"><span aria-hidden="true">↙</span>{{ player.fouls >= 5 ? 'Fouled out' : selectedOut ? 'Swap in' : 'Sub in' }}</button>
+          </article>
         </div>
-
-        <div class="bg-gray-100 p-3 text-center border-t border-gray-200">
-          <button
-            class="w-full text-xs font-bold text-gray-500 uppercase hover:text-[#144935] transition-colors py-2"
-            @click="closePlayerDetail"
-          >
-            Close Details
-          </button>
-        </div>
-      </div>
+        <p v-if="filteredBench.length === 0" class="empty-bench">No players in this group.</p>
+        <p class="bench-help">{{ selectedOut ? 'Choose a replacement, then confirm the swap.' : court.length >= 5 ? 'To make a substitution, select “Sub out” on the left.' : 'Tap “Sub in” to fill an open spot.' }}</p>
+      </section>
     </div>
-  </div>
+
+    <footer class="game-footer"><span class="footer-credit">DREW BASKETBALL <span> / </span> Built for the sideline.</span><div><button class="button button-quiet" :disabled="live" @click="modal = { type: 'period' }">{{ session.period === 1 ? 'Next: 2nd half' : 'Next: overtime' }} <span aria-hidden="true">→</span></button><button class="button new-game-button" :disabled="live" @click="modal = { type: 'new' }">New game</button></div></footer>
+
+    <ConfirmDialog v-if="modal" :title="dialogTitle" :danger="modal.type === 'new'" :confirm-label="modal.type === 'clock' ? 'Set time' : modal.type === 'swap' ? 'Confirm swap' : modal.type === 'new' ? 'Start new game' : 'Confirm'" @cancel="modal = null" @confirm="confirmModal">
+      <template v-if="modal.type === 'clock'"><p>Match the scoreboard. The current lineup’s minutes will adjust by the same amount.</p><label class="clock-input-label" for="clock-input">Time remaining (MM:SS)</label><input id="clock-input" v-model="clockInput" class="clock-input" autocomplete="off" inputmode="text" maxlength="5" aria-describedby="clock-validation" @input="clockError = ''" /><p id="clock-validation" class="field-error">{{ clockError }}</p></template>
+      <template v-else-if="modal.type === 'swap'"><div class="swap-preview"><div><span class="eyebrow">OUT</span><strong>#{{ modal.outgoing.number }} {{ modal.outgoing.name }}</strong></div><span aria-hidden="true">⇄</span><div><span class="eyebrow">IN</span><strong>#{{ modal.incoming.number }} {{ modal.incoming.name }}</strong></div></div><p>Both changes are recorded together when you confirm.</p></template>
+      <p v-else-if="modal.type === 'remove'">Remove <strong>{{ modal.outgoing.name }}</strong> without a replacement? You will have {{ court.length - 1 }} players on court.</p>
+      <p v-else-if="modal.type === 'short'">There are {{ court.length }} players on court. Start the clock with this lineup?</p>
+      <p v-else-if="modal.type === 'period'">The clock will reset to {{ session.period === 1 ? '20:00' : '05:00' }} and stay paused. Total minutes and player fouls will carry over.</p>
+      <p v-else>All game minutes and fouls will be cleared. Practice stats will be kept. This cannot be undone.</p>
+    </ConfirmDialog>
+  </main>
 </template>
-
-<style scoped>
-.photo-frame {
-  touch-action: manipulation;
-}
-
-.photo-frame::after {
-  content: "VIEW";
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  border-radius: 2px;
-  background: rgba(0, 0, 0, 0.65);
-  color: white;
-  font-size: 8px;
-  font-weight: 800;
-  line-height: 1;
-  opacity: 0;
-  padding: 2px 3px;
-  transition: opacity 0.2s;
-}
-
-.photo-frame:hover::after {
-  opacity: 1;
-}
-
-.photo-frame:hover {
-  opacity: 0.9;
-}
-
-@keyframes pulse-yellow {
-  0%,
-  100% {
-    box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0);
-    border-color: #57a51d;
-  }
-  50% {
-    box-shadow: inset 0 0 20px rgba(250, 204, 21, 0.8);
-    border-color: #facc15;
-  }
-}
-
-@keyframes pulse-orange {
-  0%,
-  100% {
-    box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0);
-    border-color: #57a51d;
-  }
-  50% {
-    box-shadow: inset 0 0 30px rgba(249, 115, 22, 0.9);
-    border-color: #f97316;
-  }
-}
-
-@keyframes pulse-red {
-  0%,
-  100% {
-    box-shadow: inset 0 0 0 0 rgba(0, 0, 0, 0);
-    border-color: #57a51d;
-  }
-  50% {
-    box-shadow: inset 0 0 40px rgba(239, 68, 68, 1);
-    border-color: #ef4444;
-  }
-}
-
-.alert-level-1 {
-  animation: pulse-yellow 1s infinite;
-}
-
-.alert-level-2 {
-  animation: pulse-orange 1s infinite;
-}
-
-.alert-level-3 {
-  animation: pulse-red 0.5s infinite;
-}
-
-@media (max-width: 767px), (prefers-reduced-motion: reduce) {
-  .alert-level-1,
-  .alert-level-2,
-  .alert-level-3 {
-    animation: none;
-  }
-
-  .alert-level-1 {
-    border-color: #facc15;
-    box-shadow: inset 0 0 0 2px #facc15;
-  }
-
-  .alert-level-2 {
-    border-color: #f97316;
-    box-shadow: inset 0 0 0 2px #f97316;
-  }
-
-  .alert-level-3 {
-    border-color: #ef4444;
-    box-shadow: inset 0 0 0 2px #ef4444;
-  }
-}
-</style>
