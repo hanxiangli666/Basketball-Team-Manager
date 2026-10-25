@@ -11,6 +11,7 @@ const view = ref('landing')
 const session = shallowRef(createSession(roster))
 const history = ref([])
 const notice = ref('')
+const noticeIsError = ref(false)
 const storageWarning = ref('')
 const practice = ref({})
 const sortMode = ref('default')
@@ -49,8 +50,9 @@ const practicePlayers = computed(() => sortMode.value === 'score-desc'
   ? [...players.value].sort((a, b) => b.practiceTotal - a.practiceTotal || a.id - b.id)
   : players.value)
 
-function notify(message) {
+function notify(message, isError = false) {
   notice.value = message
+  noticeIsError.value = isError
   clearTimeout(noticeTimer)
   noticeTimer = setTimeout(() => { notice.value = '' }, 3500)
 }
@@ -71,7 +73,7 @@ function scheduleSave() {
   if (!saveTimer) saveTimer = setTimeout(persist, 120)
 }
 
-function act(action) {
+function act(action, onResult) {
   const now = gameNow()
   const previous = settleSession(session.value, now)
   try {
@@ -82,9 +84,11 @@ function act(action) {
     session.value = next
     if (action.label) notify(action.label)
     scheduleSave()
+    onResult?.(true)
     return true
   } catch (error) {
-    notify(error.message)
+    notify(error.message, true)
+    onResult?.(false)
     return false
   }
 }
@@ -173,5 +177,5 @@ onBeforeUnmount(() => {
     @action="act" @main-action="mainAction" @undo="undo" @new-game="newGame" @switch-view="changeView" />
   <PracticeView v-else :players="practicePlayers" :sort-mode="sortMode" @switch-view="changeView"
     @update-practice-stat="updatePractice" @sort-practice="sortMode = sortMode === 'default' ? 'score-desc' : 'default'" @reset-practice="resetPractice" />
-  <div v-if="notice" class="toast" role="status" aria-live="polite">{{ notice }}</div>
+  <div v-if="notice" :class="view === 'game' && !noticeIsError ? 'sr-only' : 'toast'" role="status" aria-live="polite">{{ notice }}</div>
 </template>
