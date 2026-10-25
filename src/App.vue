@@ -78,7 +78,7 @@ function act(action, onResult) {
   const previous = settleSession(session.value, now)
   try {
     const next = applyAction(previous, action, now)
-    if (['toggle', 'swap', 'adjust-clock'].includes(action.type)) {
+    if (['toggle', 'swap', 'adjust-clock', 'adjust-player-time'].includes(action.type)) {
       history.value = [...history.value.slice(-19), { session: previous, label: action.label || 'Last change' }]
     } else history.value = []
     session.value = next

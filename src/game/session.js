@@ -4,7 +4,14 @@ export const STORAGE_KEY = 'drew.rotation.session.v1'
 
 const copy = (session) => ({ ...session, players: session.players.map((player) => ({ ...player })) })
 export const periodDuration = (period) => period <= 2 ? 20 * 60 * 1000 : 5 * 60 * 1000
+export const clockLimit = (period) => period <= 2 ? periodDuration(period) : Infinity
 export const periodLabel = (period) => period === 1 ? '1st half' : period === 2 ? '2nd half' : `Overtime ${period - 2}`
+
+export function parseTimeParts(minutes, seconds) {
+  if (!/^\d+$/.test(minutes) || !/^\d{1,2}$/.test(seconds) || Number(seconds) > 59) return null
+  const value = Number(minutes) * 60 + Number(seconds)
+  return Number.isSafeInteger(value * 1000) ? value : null
+}
 
 export function formatTime(ms, countdown = false) {
   const seconds = Math.max(0, countdown ? Math.ceil(ms / 1000) : Math.floor(ms / 1000))
@@ -105,7 +112,8 @@ export function applyAction(session, action, now = Date.now()) {
     case 'adjust-clock': {
       const target = action.seconds === undefined ? next.clockMs + action.delta * 1000 : action.seconds * 1000
       if (!Number.isFinite(target)) throw new Error('Enter a valid time.')
-      const clockMs = Math.max(0, Math.min(periodDuration(next.period), target))
+      if (!Number.isSafeInteger(Math.round(target))) throw new Error('Enter a valid time.')
+      const clockMs = Math.max(0, Math.min(clockLimit(next.period), target))
       // A scoreboard correction also corrects the current lineup's recorded time.
       if (next.status !== 'SETUP') creditTime(next, next.clockMs - clockMs)
       next.clockMs = clockMs
@@ -115,13 +123,27 @@ export function applyAction(session, action, now = Date.now()) {
       }
       break
     }
-    case 'next-period':
+    case 'adjust-player-time': {
+      if (!player?.isOnCourt) throw new Error('Choose a player on court.')
+      const delta = action.deltaSeconds * 1000
+      if (!Number.isSafeInteger(delta) || player.stintMs + delta < 0
+        || !Number.isSafeInteger(Math.ceil(player.totalMs + delta))) throw new Error('Enter a valid player time.')
+      // Apply the correction, preserving any time played while the editor was open.
+      player.stintMs += delta
+      player.totalMs += delta
+      if (player.totalMs > 0) player.hasPlayed = true
+      break
+    }
+    case 'next-period': {
       next.period += 1
-      next.clockMs = periodDuration(next.period)
+      const seconds = next.period > 2 ? action.durationSeconds ?? 300 : 1200
+      if (!Number.isSafeInteger(seconds * 1000) || seconds <= 0) throw new Error('Enter a valid period duration.')
+      next.clockMs = seconds * 1000
       next.status = 'PAUSED'
       next.lastTickAt = null
       next.players.forEach((candidate) => { candidate.stintMs = 0; candidate.restMs = 0 })
       break
+    }
     default:
       throw new Error('Unknown game action.')
   }
@@ -134,7 +156,7 @@ export function restoreSession(raw, roster, now = Date.now()) {
   const finite = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0
   if (!saved || saved.version !== SESSION_VERSION || !Array.isArray(saved.players)
     || !Number.isInteger(saved.period) || saved.period < 1 || saved.period > 100
-    || !finite(saved.clockMs) || saved.clockMs > periodDuration(saved.period)
+    || !finite(saved.clockMs) || saved.clockMs > clockLimit(saved.period)
     || !['SETUP', 'PAUSED', 'PLAYING'].includes(saved.status)
     || (saved.status === 'PLAYING' && (!finite(saved.lastTickAt) || saved.lastTickAt > now))) {
     throw new Error('Saved game could not be read.')

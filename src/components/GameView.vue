@@ -2,7 +2,9 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import ReadyQueue from './ReadyQueue.vue'
-import { formatTime, periodDuration, periodLabel } from '../game/session.js'
+import TimeFields from './TimeFields.vue'
+import TotalTimeDialog from './TotalTimeDialog.vue'
+import { clockLimit, formatTime, parseTimeParts, periodLabel } from '../game/session.js'
 import { activateReady, chooseIncoming, chooseOutgoing, completeSubstitution, createSubstitutionPlan, reconcileCourtOrder, reconcilePlan } from '../game/substitutions.js'
 
 const props = defineProps({ players: Array, session: Object, canUndo: Boolean })
@@ -16,9 +18,12 @@ const benchList = ref(null)
 const menuOpen = ref(false)
 const isApplying = ref(false)
 const modal = ref(null)
-const clockInput = ref('')
-const clockError = ref('')
-const court = computed(() => props.players.filter((player) => player.isOnCourt).sort((a, b) => courtOrder.value.indexOf(a.id) - courtOrder.value.indexOf(b.id)))
+const showTotals = ref(false)
+const editPlayer = ref(null)
+const timeMinutes = ref('')
+const timeSeconds = ref('')
+const timeError = ref('')
+const court = computed(() => props.players.filter((player) => player.isOnCourt).sort((a, b) => b.stintMs - a.stintMs || courtOrder.value.indexOf(a.id) - courtOrder.value.indexOf(b.id)))
 const bench = computed(() => props.players.filter((player) => !player.isOnCourt))
 const selectedOut = computed(() => court.value.find((player) => player.id === plan.value.outgoingId))
 const readyPlayers = computed(() => plan.value.readyIds.map((id) => bench.value.find((player) => player.id === id)).filter(Boolean))
@@ -29,7 +34,7 @@ const ended = computed(() => props.session.clockMs === 0)
 const status = computed(() => ended.value ? 'Period ended' : live.value ? 'Live' : props.session.status === 'SETUP' ? 'Ready' : 'Paused')
 const mainText = computed(() => ended.value ? 'Period ended' : live.value ? 'Stop clock' : props.session.status === 'SETUP' ? 'Confirm starters' : 'Start clock')
 const nextPeriod = computed(() => props.session.period === 1 ? '2nd half' : props.session.period === 2 ? 'overtime' : 'next overtime')
-const dialogTitle = computed(() => ({ clock: 'Sync game clock', new: 'Start a new game?', period: `Start ${nextPeriod.value}?` })[modal.value])
+const dialogTitle = computed(() => ({ clock: 'Sync game clock', player: 'Edit Game Time', new: 'Start a new game?', period: `Start ${nextPeriod.value}?` })[modal.value])
 const benchGroups = computed(() => [
   ['PG', 'Point Guards'], ['SG', 'Shooting Guards'], ['SF', 'Small Forwards'], ['PF', 'Power Forwards'], ['C', 'Centers'],
 ].filter(([pos]) => positionFilter.value === 'ALL' || positionFilter.value === pos)
@@ -40,10 +45,20 @@ watch(() => props.players.filter((player) => player.isOnCourt).map((player) => p
   plan.value = reconcilePlan(plan.value, props.players)
 })
 function photoFallback(event) { event.target.onerror = null; event.target.src = '/icon.png' }
+function setTimeInput(seconds) {
+  timeMinutes.value = String(Math.floor(seconds / 60))
+  timeSeconds.value = String(seconds % 60).padStart(2, '0')
+  timeError.value = ''
+}
 function openClock() {
-  clockInput.value = formatTime(props.session.clockMs, true)
-  clockError.value = ''
+  setTimeInput(Math.ceil(props.session.clockMs / 1000))
   modal.value = 'clock'
+}
+function openPlayerTime(player) {
+  const seconds = Math.floor(player.stintMs / 1000)
+  editPlayer.value = { id: player.id, name: player.name, seconds }
+  setTimeInput(seconds)
+  modal.value = 'player'
 }
 function chooseOut(player) {
   if (isApplying.value) return
@@ -75,7 +90,7 @@ function setPosition(position) {
   positionFilter.value = position
   nextTick(() => { if (benchList.value) benchList.value.scrollTop = 0 })
 }
-function openPeriod() { menuOpen.value = false; modal.value = 'period' }
+function openPeriod() { menuOpen.value = false; setTimeInput(300); modal.value = 'period' }
 function openNewGame() { menuOpen.value = false; modal.value = 'new' }
 function backToMenu() { menuOpen.value = false; emit('switch-view', 'landing') }
 function resetPlan() {
@@ -83,17 +98,27 @@ function resetPlan() {
   courtOrder.value = props.players.filter((player) => player.starter).map((player) => player.id)
 }
 function confirmModal() {
+  const needsTime = ['clock', 'player'].includes(modal.value) || (modal.value === 'period' && props.session.period >= 2)
+  const seconds = needsTime ? parseTimeParts(timeMinutes.value.trim(), timeSeconds.value.trim()) : null
+  if (needsTime && seconds === null) {
+    timeError.value = 'Enter minutes and seconds (00–59).'
+    return
+  }
+  const finish = (success) => { if (success) modal.value = null }
   if (modal.value === 'clock') {
-    const match = /^(\d{1,2}):([0-5]\d)$/.exec(clockInput.value.trim())
-    const seconds = match ? Number(match[1]) * 60 + Number(match[2]) : -1
-    if (seconds < 0 || seconds * 1000 > periodDuration(props.session.period)) {
-      clockError.value = `Use MM:SS, from 00:00 to ${formatTime(periodDuration(props.session.period))}.`
+    if (seconds * 1000 > clockLimit(props.session.period)) {
+      timeError.value = 'The half has a maximum of 20:00.'
       return
     }
-    emit('action', { type: 'adjust-clock', seconds, label: 'Game clock synced' })
-  } else if (modal.value === 'period') { plan.value = createSubstitutionPlan(); emit('action', { type: 'next-period', label: `${nextPeriod.value} ready` }) }
-  else if (modal.value === 'new') { resetPlan(); emit('new-game') }
-  modal.value = null
+    emit('action', { type: 'adjust-clock', seconds, label: 'Game clock synced' }, finish)
+  } else if (modal.value === 'player') {
+    emit('action', { type: 'adjust-player-time', playerId: editPlayer.value.id, deltaSeconds: seconds - editPlayer.value.seconds, label: `${editPlayer.value.name} time corrected` }, finish)
+  } else if (modal.value === 'period') {
+    if (needsTime && seconds === 0) { timeError.value = 'Choose a duration greater than zero.'; return }
+    emit('action', { type: 'next-period', durationSeconds: seconds ?? 1200, label: `${nextPeriod.value} ready` }, (success) => {
+      if (success) { plan.value = createSubstitutionPlan(); modal.value = null }
+    })
+  } else if (modal.value === 'new') { resetPlan(); emit('new-game'); modal.value = null }
 }
 </script>
 
@@ -107,6 +132,7 @@ function confirmModal() {
           </button>
           <div class="game-brand"><h1>DREW MBB</h1><div class="game-meta"><span class="period-label">{{ periodLabel(session.period) }}</span><span class="clock-status" :class="{ live, ended }"><i aria-hidden="true"></i>{{ status }}</span></div></div>
         </div>
+        <button class="totals-toggle" aria-label="View Total Time" @click="showTotals = true"><span>Total</span><span>Time ↗</span></button>
         <button class="clock-display" aria-label="Sync game clock" @click="openClock">
           <strong role="timer" aria-live="off">{{ formatTime(session.clockMs, true) }}</strong>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m15 5 4 4M5 19l4-1L20 7a2.8 2.8 0 0 0-4-4L5 14z" /></svg>
@@ -114,6 +140,7 @@ function confirmModal() {
       </header>
       <section class="game-controls" aria-label="Game clock controls">
         <div class="clock-control-row">
+          <button class="clock-adjust" aria-label="Add 1 second" :disabled="session.clockMs >= clockLimit(session.period)" @click="emit('action', { type: 'adjust-clock', delta: 1 })"><span>+1</span><small>s</small></button>
           <button class="clock-adjust" aria-label="Subtract 1 second" :disabled="ended" @click="emit('action', { type: 'adjust-clock', delta: -1 })"><span>−1</span><small>s</small></button>
           <button class="main-action" :class="{ running: live }" :disabled="ended" @click="emit('main-action')">
             <svg v-if="live" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
@@ -121,7 +148,6 @@ function confirmModal() {
             <svg v-else viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l12-7z" /></svg>
             {{ mainText }}
           </button>
-          <button class="clock-adjust" aria-label="Add 1 second" :disabled="session.clockMs >= periodDuration(session.period)" @click="emit('action', { type: 'adjust-clock', delta: 1 })"><span>+1</span><small>s</small></button>
         </div>
       </section>
       <button v-if="menuOpen" class="game-menu-backdrop" aria-label="Close game options" tabindex="-1" @click="menuOpen = false"></button>
@@ -134,11 +160,11 @@ function confirmModal() {
     <div class="rotation-area">
       <section class="court-section" aria-label="On court">
         <ReadyQueue v-if="readyPlayers.length" :players="readyPlayers" :active-id="plan.activeId" @select="plan = activateReady(plan, $event)" @clear="plan = createSubstitutionPlan()" />
-        <div class="court-heading"><h2>{{ activeIncoming ? 'Choose who comes out' : 'ON COURT' }}</h2><span>{{ court.length }}/5</span></div>
+        <div class="court-heading"><h2>{{ activeIncoming ? 'Choose who comes out' : 'ON COURT' }}<small v-if="!activeIncoming">Game Time ↓</small></h2><span>{{ court.length }}/5</span></div>
         <div class="court-list mobile-scroll">
           <article v-for="player in court" :key="player.id" class="court-player" :class="{ selected: plan.outgoingId === player.id, 'can-swap': Boolean(activeIncoming), 'alert-level-1': player.stintMs >= 120000, 'alert-level-2': player.stintMs >= 180000, 'alert-level-3': player.stintMs >= 240000 }">
             <button class="court-photo" :aria-label="`View ${player.name} details`" @click="detailPlayerId = player.id"><img :src="player.img" :alt="player.name" decoding="async" @error="photoFallback" /></button>
-            <div class="court-player-info"><h3>{{ player.name }}</h3><div class="player-time" aria-label="Time on court">{{ formatTime(player.stintMs) }}</div><small>Total {{ formatTime(player.totalMs) }} · {{ player.pos }}</small></div>
+            <div class="court-player-info"><h3>{{ player.name }} <small>{{ player.pos }}</small></h3><button class="player-time" :aria-label="`Edit ${player.name} Game Time`" @click="openPlayerTime(player)">{{ formatTime(player.stintMs) }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m15 5 4 4M5 19l4-1L20 7a2.8 2.8 0 0 0-4-4L5 14z" /></svg></button></div>
             <button class="sub-out" :disabled="isApplying" :aria-label="activeIncoming ? `Replace ${player.name} with ${activeIncoming.name}` : `Sub out ${player.name}`" @click="chooseOut(player)">{{ activeIncoming ? 'Swap ↔' : 'Sub out ↗' }}</button>
           </article>
           <p v-if="!court.length" class="empty-court">Open Bench to select your starters.</p>
@@ -169,11 +195,13 @@ function confirmModal() {
         <div class="bench-done"><button @click="closeBench">{{ readyPlayers.length ? `Done · ${readyPlayers.length} ready` : 'Back to court' }}</button></div>
       </aside>
     </div>
-    <ConfirmDialog v-if="modal" :title="dialogTitle" :danger="modal === 'new'" :confirm-label="modal === 'clock' ? 'Sync time' : 'Confirm'" @cancel="modal = null" @confirm="confirmModal">
-      <template v-if="modal === 'clock'"><p>Match the scoreboard. The current lineup’s minutes will adjust with the clock.</p><label for="clock-input">Time remaining (MM:SS)</label><input id="clock-input" v-model="clockInput" class="clock-input" inputmode="text" autocomplete="off" maxlength="5" aria-describedby="clock-validation" @input="clockError = ''" /><p id="clock-validation" class="field-error">{{ clockError }}</p></template>
-      <p v-else-if="modal === 'period'">Reset the clock to {{ session.period === 1 ? '20:00' : '05:00' }} for {{ nextPeriod }}? Total minutes and lineup will carry over.</p>
+    <ConfirmDialog v-if="modal" :title="dialogTitle" :danger="modal === 'new'" :confirm-label="modal === 'clock' ? 'Sync time' : modal === 'player' ? 'Save time' : 'Confirm'" @cancel="modal = null" @confirm="confirmModal">
+      <template v-if="modal === 'clock'"><p>Match the scoreboard. The current lineup’s minutes will adjust with the clock.</p><TimeFields v-model:minutes="timeMinutes" v-model:seconds="timeSeconds" prefix="clock" :invalid="Boolean(timeError)" @input="timeError = ''" /><p id="clock-error" class="field-error" role="alert">{{ timeError }}</p></template>
+      <template v-else-if="modal === 'player'"><p class="edit-player-name">{{ editPlayer.name }}</p><p>Time for this rotation. Total Time updates too. The clock keeps running if live.</p><TimeFields v-model:minutes="timeMinutes" v-model:seconds="timeSeconds" prefix="player" :invalid="Boolean(timeError)" @input="timeError = ''" /><p id="player-error" class="field-error" role="alert">{{ timeError }}</p></template>
+      <template v-else-if="modal === 'period'"><p>Total Time and lineup will carry over.</p><template v-if="session.period >= 2"><TimeFields v-model:minutes="timeMinutes" v-model:seconds="timeSeconds" prefix="period" :invalid="Boolean(timeError)" @input="timeError = ''" /><p id="period-error" class="field-error" role="alert">{{ timeError }}</p></template><p v-else>Reset the clock to 20:00 for the 2nd half?</p></template>
       <p v-else>Clear this game’s minutes and lineup? Practice stats will be kept.</p>
     </ConfirmDialog>
+    <TotalTimeDialog v-if="showTotals" :players="players" @close="showTotals = false" />
     <ConfirmDialog v-if="detailPlayer" :title="detailPlayer.name" confirm-label="Done" @cancel="detailPlayerId = null" @confirm="detailPlayerId = null"><div class="detail-player"><img :src="detailPlayer.img" :alt="detailPlayer.name" @error="photoFallback" /><p>{{ detailPlayer.pos }} · {{ detailPlayer.isOnCourt ? 'ON COURT' : 'ON BENCH' }}</p><dl><div><dt>{{ detailPlayer.isOnCourt ? 'Time on court' : 'Rest duration' }}</dt><dd>{{ formatTime(detailPlayer.isOnCourt ? detailPlayer.stintMs : detailPlayer.restMs) }}</dd></div><div><dt>Last sub out</dt><dd>{{ detailPlayer.lastSubOutClockMs === null ? '--:--' : formatTime(detailPlayer.lastSubOutClockMs, true) }}</dd></div><div><dt>Total time</dt><dd>{{ formatTime(detailPlayer.totalMs) }}</dd></div></dl></div></ConfirmDialog>
   </main>
 </template>

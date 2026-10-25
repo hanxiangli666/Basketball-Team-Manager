@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyAction, createSession, formatTime, periodDuration, restoreSession, settleSession } from '../../src/game/session.js'
+import { applyAction, createSession, formatTime, parseTimeParts, periodDuration, restoreSession, settleSession } from '../../src/game/session.js'
 import { roster as teamRoster } from '../../src/data/roster.js'
 
 // Timing rules use a complete fixture lineup, independent of seasonal roster choices.
@@ -239,5 +239,83 @@ test('updated defaults never replace the lineup or minutes of a started game', (
     assert.deepEqual(restored.players.filter((player) => player.isOnCourt).map((player) => player.id), [6, 8])
     assert.equal(stateOf(restored, 6).totalMs, saved.status === 'PLAYING' ? 1000 : 500)
     assert.equal(restored.status, saved.status)
+  }
+})
+
+test('correcting four minutes to two preserves previous rotations and every other player', () => {
+  let session = settleSession(start(), 121000)
+  session = applyAction(session, { type: 'swap', outId: starterId, playerId: benchId }, 121000)
+  session = applyAction(session, { type: 'swap', outId: benchId, playerId: starterId }, 181000)
+  session = applyAction(session, { type: 'clock' }, 421000)
+  const before = JSON.stringify(session)
+  const corrected = applyAction(session, { type: 'adjust-player-time', playerId: starterId, deltaSeconds: -120 }, 422000)
+  assert.equal(stateOf(corrected, starterId).stintMs, 120000)
+  assert.equal(stateOf(corrected, starterId).totalMs, 240000)
+  assert.equal(corrected.clockMs, session.clockMs)
+  assert.equal(corrected.status, 'PAUSED')
+  assert.deepEqual(corrected.players.filter((p) => p.id !== starterId), session.players.filter((p) => p.id !== starterId))
+  assert.equal(JSON.stringify(session), before)
+  assert.deepEqual(restoreSession(JSON.stringify(corrected), roster, 422000), corrected)
+})
+
+test('a live correction keeps the time played while editing and undo continues the original clock', () => {
+  const before = settleSession(start(), 241000)
+  const corrected = applyAction(before, { type: 'adjust-player-time', playerId: starterId, deltaSeconds: -120 }, 251000)
+  assert.equal(stateOf(corrected, starterId).stintMs, 130000)
+  assert.equal(stateOf(corrected, starterId).totalMs, 130000)
+  assert.equal(corrected.clockMs, 950000)
+  assert.equal(corrected.status, 'PLAYING')
+  const undone = settleSession(before, 256000)
+  assert.equal(stateOf(undone, starterId).stintMs, 255000)
+  assert.equal(undone.clockMs, 945000)
+})
+
+test('player time can be increased or set to zero but invalid corrections cannot corrupt a save', () => {
+  const session = settleSession(start(), 61000)
+  const raised = applyAction(session, { type: 'adjust-player-time', playerId: starterId, deltaSeconds: 120 }, 61000)
+  assert.equal(stateOf(raised, starterId).stintMs, 180000)
+  const zeroed = applyAction(raised, { type: 'adjust-player-time', playerId: starterId, deltaSeconds: -180 }, 61000)
+  assert.equal(stateOf(zeroed, starterId).totalMs, 0)
+  for (const deltaSeconds of [-61, NaN, Infinity, Number.MAX_SAFE_INTEGER]) {
+    assert.throws(() => applyAction(session, { type: 'adjust-player-time', playerId: starterId, deltaSeconds }, 61000), /valid player time/)
+  }
+  assert.throws(() => applyAction(session, { type: 'adjust-player-time', playerId: benchId, deltaSeconds: 10 }, 61000), /on court/)
+})
+
+test('overtime accepts a custom duration above five minutes and restores it without resetting the game', () => {
+  let session = applyAction(start(), { type: 'next-period' }, 61000)
+  session = applyAction(session, { type: 'next-period', durationSeconds: 12 * 60 + 30 }, 61000)
+  assert.equal(session.clockMs, 750000)
+  assert.equal(stateOf(session, starterId).totalMs, 60000)
+  assert.equal(stateOf(session, starterId).stintMs, 0)
+  const running = applyAction(session, { type: 'clock' }, 61000)
+  const restored = restoreSession(JSON.stringify(running), roster, 71000)
+  assert.equal(restored.clockMs, 740000)
+  assert.equal(stateOf(restored, starterId).totalMs, 70000)
+  const edited = applyAction(restored, { type: 'adjust-clock', seconds: 123 * 60 + 45 }, 71000)
+  assert.equal(edited.clockMs, 7425000)
+  assert.equal(applyAction(edited, { type: 'adjust-clock', delta: 1 }, 71000).clockMs, 7426000)
+  assert.equal(restoreSession(JSON.stringify(edited), roster, 71000).clockMs, 7425000)
+  const nextOT = applyAction(edited, { type: 'next-period' }, 71000)
+  assert.equal(nextOT.period, 4)
+  assert.equal(nextOT.clockMs, 300000)
+})
+
+test('default overtime and old saves remain compatible while halves retain their limit', () => {
+  let session = applyAction(createSession(roster), { type: 'next-period' }, 1000)
+  assert.equal(applyAction(session, { type: 'adjust-clock', seconds: 1800 }, 1000).clockMs, 1200000)
+  session = applyAction(session, { type: 'next-period' }, 1000)
+  assert.equal(session.clockMs, 300000)
+  assert.equal(restoreSession(JSON.stringify(session), roster, 1000).clockMs, 300000)
+  for (const durationSeconds of [0, -1, Infinity, NaN]) {
+    assert.throws(() => applyAction(session, { type: 'next-period', durationSeconds }, 1000), /valid period/)
+  }
+})
+
+test('numeric minute and second fields support long durations without accepting malformed times', () => {
+  assert.equal(parseTimeParts('123', '45'), 7425)
+  assert.equal(parseTimeParts('0', '00'), 0)
+  for (const [minutes, seconds] of [['', '00'], ['-1', '00'], ['1.5', '00'], ['2', '60'], ['2', ''], ['2', '000'], ['999999999999999999', '00']]) {
+    assert.equal(parseTimeParts(minutes, seconds), null)
   }
 })
