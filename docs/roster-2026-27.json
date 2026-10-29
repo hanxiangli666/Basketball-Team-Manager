@@ -1,0 +1,167 @@
+{
+  "source": "https://drewrangers.com/sports/mens-basketball/roster/2026-27",
+  "verifiedOn": "2026-10-29",
+  "imageDelivery": "Official image service, width=480, quality=90; original aspect ratio preserved.",
+  "players": [
+    {
+      "id": 0,
+      "name": "Charlie Thornton",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10011",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Thornton_Charlie_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/charlie-thornton-2026-3226ea16.webp",
+      "sha256": "3226ea1608867ce0c15a914bd63d428ff49bafe6fc5beedd635fc262a3972437"
+    },
+    {
+      "id": 2,
+      "name": "Ben Kipnis",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10007",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Kipnis_Ben_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/ben-kipnis-2026-20888905.webp",
+      "sha256": "20888905b77048008b35d580476a98a37cbd2f85edd20cc10c4855539a5e7483"
+    },
+    {
+      "id": 4,
+      "name": "Eli Yusavage",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10012",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Yusavage_Eli_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/eli-yusavage-2026-bca4a5df.webp",
+      "sha256": "bca4a5dfae93518f507695d883f9c2c1166828750c1f5fe0fd64094dc758f578"
+    },
+    {
+      "id": 6,
+      "name": "Andre De Los Reyes",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10003",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/DeLosReyes_Andre_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/andre-de-los-reyes-2026-b8cfba16.webp",
+      "sha256": "b8cfba16a59b772af2f6807315c6288a3283a6bf956c730fd0d3f5cb7e9c7e39"
+    },
+    {
+      "id": 8,
+      "name": "Erik Porch",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10010",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Porch_Erik_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/erik-porch-2026-3f8abf21.webp",
+      "sha256": "3f8abf2133b74fb8ed02cc87540794d5b9e1a4421efe8acc8c54a3d22daec4c8"
+    },
+    {
+      "id": 9,
+      "name": "Reid Chauhan",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10001",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Chauhan_Reid_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/reid-chauhan-2026-5354df46.webp",
+      "sha256": "5354df466640d55fd8b1af2efbf5c15e4fd1e80f391dca4b2fb64359d528a319"
+    },
+    {
+      "id": 10,
+      "name": "Taylor Perlmutter",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10009",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Perlmutter_Taylor_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/taylor-perlmutter-2026-2737047d.webp",
+      "sha256": "2737047d95260216a4306d2e63fb2ccab192de09a23c6f77b4e31ad8b4eea622"
+    },
+    {
+      "id": 12,
+      "name": "Marc Herasme",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10005",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Herasme_Marc_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/marc-herasme-2026-45ba0add.webp",
+      "sha256": "45ba0adde95f135d09a30d20dc1037de4b869fb1bf129ebc7503706e7d29ba84"
+    },
+    {
+      "id": 15,
+      "name": "Connor Jepson",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10006",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Jepson_Connor_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/connor-jepson-2026-5d4a1cc7.webp",
+      "sha256": "5d4a1cc76f02611df9e72cb5bb4752558b289f7b6831d9f6f140aa6c033ed95f"
+    },
+    {
+      "id": 16,
+      "name": "Ben Manns",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10008",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Manns_Ben_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/ben-manns-2026-cf16fdda.webp",
+      "sha256": "cf16fddab99d812cd9a953ad3894e77cd475f0736afae4888d409bfc8348faa4"
+    },
+    {
+      "id": 17,
+      "name": "Kevin Cotton",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10002",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Cotton_Kevin_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/kevin-cotton-2026-643620a0.webp",
+      "sha256": "643620a04b257ef509212e52a61bb34ae436047860610fbc175615eb07875059"
+    },
+    {
+      "id": 18,
+      "name": "Charlie Dunner",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10004",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Dunner_Charlie_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/charlie-dunner-2026-ef0d47c4.webp",
+      "sha256": "ef0d47c4319f9ca4e7e65e6a38a225d4f4b99a6003ede87cce3b838f7b85c99f"
+    },
+    {
+      "id": 19,
+      "name": "Craig Belfield",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10017",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Belfield_Craig_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/craig-belfield-2026-87d0e892.webp",
+      "sha256": "87d0e892d489b13dbee860a7cd02a0f7fa26d0e74aac483bb462708f659997ee"
+    },
+    {
+      "id": 20,
+      "name": "Sam Jones",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10014",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Jones_Sam_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/sam-jones-2026-fd984ef4.webp",
+      "sha256": "fd984ef42f79c3790e6299ffd21fc3cf064275b609b8618ed26b3a2e1df92447"
+    },
+    {
+      "id": 21,
+      "name": "Malakai Cuffy",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10020",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Cuffy_Malakai_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/malakai-cuffy-2026-35b94f5e.webp",
+      "sha256": "35b94f5ee03d4ed6bf4976be1e507fc482d5ef034e93408319a9da7c57677b87"
+    },
+    {
+      "id": 22,
+      "name": "Joris Neniskis",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10018",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Neniskis_Joris_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/joris-neniskis-2026-d23ebe8c.webp",
+      "sha256": "d23ebe8c14e5d065cc36103b9c358f9a603c83328cab22757dc958a78bd2a8c2"
+    },
+    {
+      "id": 23,
+      "name": "Jameson Cassidy",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10019",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Cassidy_Jameson_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/jameson-cassidy-2026-6b1689dd.webp",
+      "sha256": "6b1689dd51a0774614431b82f4a8445844e200c2613da0d6d57e8d5feecfc836"
+    },
+    {
+      "id": 24,
+      "name": "Chandler Bligen",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10013",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Bligen_Chandler_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/chandler-bligen-2026-ee7648b4.webp",
+      "sha256": "ee7648b4be1a8ed652d3cc5671b732ceeccadfe02d9c49a9858c3bf21be25f08"
+    },
+    {
+      "id": 25,
+      "name": "Noah Mathis",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10015",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Mathis_Noah_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/noah-mathis-2026-25422469.webp",
+      "sha256": "25422469c2748b5ff01f97de9d1aabd5bd5bf2e4eb32a88293cf17d94e7b7b0a"
+    },
+    {
+      "id": 26,
+      "name": "Dylan Napoleon",
+      "profileUrl": "https://drewrangers.com/roster.aspx?rp_id=10016",
+      "sourceImage": "https://drewrangers.com/images/2026/10/21/Napoleon_Dylan_2026.jpg?width=480&quality=90",
+      "localImage": "/Photos/dylan-napoleon-2026-6ece43d8.webp",
+      "sha256": "6ece43d8d86aa6fce7322a82c0f0db4191f1b99ff0cd2ab3235eca096030a092"
+    }
+  ]
+}
