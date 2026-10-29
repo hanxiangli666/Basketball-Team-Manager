@@ -18,10 +18,15 @@ const emit = defineEmits(["switch-view"])
         class="h-24 w-24 sm:h-32 sm:w-32 object-contain drop-shadow-2xl mb-4 sm:mb-6 rounded-full border-4 border-white/20 bg-white/10 md:backdrop-blur"
       />
 
-      <h1 class="text-[2.55rem] leading-[0.95] sm:text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-lg text-center uppercase italic mb-7 sm:mb-12">
+      <h1 class="text-[2.55rem] leading-[0.95] sm:text-5xl md:text-6xl font-black text-white tracking-tighter drop-shadow-lg text-center uppercase italic mb-3 sm:mb-4">
         Drew Rangers <br />
         <span class="inline-block mt-2 text-green-400">Tracker Pro</span>
       </h1>
+
+      <p class="landing-credit mb-7 sm:mb-12 flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-center text-sm sm:text-base font-medium text-white/85 drop-shadow-lg">
+        <span>Designed by</span>
+        <strong class="text-[1.4rem] sm:text-[1.6rem] font-extrabold tracking-tight text-white">Hanxiang Li</strong>
+      </p>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 w-full max-w-5xl">
         <button
@@ -54,9 +59,6 @@ const emit = defineEmits(["switch-view"])
 
       </div>
 
-      <div class="mt-6 sm:mt-12 text-center text-white/50 text-[10px] sm:text-xs font-mono">
-        Designed by Hanxiang Li
-      </div>
     </div>
   </div>
 </template>
