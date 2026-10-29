@@ -6,6 +6,7 @@ import PracticeView from './components/PracticeView.vue'
 import { roster } from './data/roster.js'
 import { createEmptyPracticeStats } from './data/players.js'
 import { applyAction, createSession, restoreSession, settleSession, STORAGE_KEY } from './game/session.js'
+import { changePracticeStat, undoPracticeStat } from './practice/scoring.js'
 
 const view = ref('landing')
 const session = shallowRef(createSession(roster))
@@ -14,7 +15,7 @@ const notice = ref('')
 const noticeIsError = ref(false)
 const storageWarning = ref('')
 const practice = ref({})
-const sortMode = ref('default')
+const practiceHistory = ref([])
 const practiceKey = 'drew.rotation.practice.v1'
 // Monotonic while this page is open, epoch based for recovery after a reload.
 const epoch = Date.now() - performance.now()
@@ -46,9 +47,6 @@ const players = computed(() => roster.map((player) => ({
   practiceStats: practice.value[player.id] || createEmptyPracticeStats(),
   practiceTotal: Object.values(practice.value[player.id] || {}).reduce((sum, value) => sum + value, 0),
 })))
-const practicePlayers = computed(() => sortMode.value === 'score-desc'
-  ? [...players.value].sort((a, b) => b.practiceTotal - a.practiceTotal || a.id - b.id)
-  : players.value)
 
 function notify(message, isError = false) {
   notice.value = message
@@ -123,15 +121,27 @@ function changeView(nextView) {
   view.value = nextView
 }
 
-function updatePractice(playerId, key, delta) {
-  if (!(key in (practice.value[playerId] || {}))) return
-  practice.value[playerId][key] = Math.max(0, practice.value[playerId][key] + delta)
+function updatePractice(playerId, key, delta, onResult) {
+  const change = changePracticeStat(practice.value, playerId, key, delta)
+  if (!change) { onResult?.(false); return }
+  practice.value = change.stats
+  practiceHistory.value = [...practiceHistory.value.slice(-99), change.record]
+  scheduleSave()
+  onResult?.(true)
+}
+
+function undoPractice() {
+  const record = practiceHistory.value.at(-1)
+  const restored = undoPracticeStat(practice.value, record)
+  if (!restored) return
+  practice.value = restored
+  practiceHistory.value.pop()
   scheduleSave()
 }
 
 function resetPractice() {
   practice.value = Object.fromEntries(roster.map((player) => [player.id, createEmptyPracticeStats()]))
-  sortMode.value = 'default'
+  practiceHistory.value = []
   scheduleSave()
 }
 
@@ -175,7 +185,7 @@ onBeforeUnmount(() => {
   <LandingView v-if="view === 'landing'" @switch-view="changeView" />
   <GameView v-else-if="view === 'game'" :players="players" :session="session" :can-undo="history.length > 0"
     @action="act" @main-action="mainAction" @undo="undo" @new-game="newGame" @switch-view="changeView" />
-  <PracticeView v-else :players="practicePlayers" :sort-mode="sortMode" @switch-view="changeView"
-    @update-practice-stat="updatePractice" @sort-practice="sortMode = sortMode === 'default' ? 'score-desc' : 'default'" @reset-practice="resetPractice" />
-  <div v-if="notice" :class="view === 'game' && !noticeIsError ? 'sr-only' : 'toast'" role="status" aria-live="polite">{{ notice }}</div>
+  <PracticeView v-else :players="players" :can-undo="practiceHistory.length > 0" @switch-view="changeView"
+    @update-practice-stat="updatePractice" @undo="undoPractice" @reset-practice="resetPractice" />
+  <div v-if="notice" :class="view !== 'landing' && !noticeIsError ? 'sr-only' : 'toast'" role="status" aria-live="polite">{{ notice }}</div>
 </template>
