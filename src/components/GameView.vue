@@ -163,14 +163,14 @@ function confirmModal() {
         <ReadyQueue v-if="readyPlayers.length" :players="readyPlayers" :active-id="plan.activeId" @select="plan = activateReady(plan, $event)" @clear="plan = createSubstitutionPlan()" />
         <div class="court-heading"><h2>{{ activeIncoming ? 'Choose who comes out' : 'ON COURT' }}<small v-if="!activeIncoming">Game Time</small></h2><span>{{ court.length }}/5</span></div>
         <div class="court-list mobile-scroll">
-          <article v-for="player in court" :key="player.id" class="court-player" :class="{ selected: plan.outgoingId === player.id, 'can-swap': Boolean(activeIncoming), 'alert-level-1': player.stintMs >= 120000, 'alert-level-2': player.stintMs >= 180000, 'alert-level-3': player.stintMs >= 240000 }">
+          <article v-for="player in court" :key="player.id" class="court-player" :class="{ selected: plan.outgoingId === player.id, 'can-swap': Boolean(activeIncoming), 'alert-level-1': player.stintMs >= 180000, 'alert-level-2': player.stintMs >= 240000, 'alert-level-3': player.stintMs >= 300000 }">
+            <div class="court-actions"><button class="sub-out" :disabled="isApplying" :aria-label="activeIncoming ? `Replace ${player.name} with ${activeIncoming.name}` : `Sub out ${player.name}`" @click="chooseOut(player)">{{ activeIncoming ? 'Swap' : 'Sub out' }}</button><button class="player-time" :aria-label="`Edit ${player.name} Game Time`" @click="openPlayerTime(player)">{{ formatTime(player.stintMs) }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m15 5 4 4M5 19l4-1L20 7a2.8 2.8 0 0 0-4-4L5 14z" /></svg></button></div>
+            <div class="court-player-info"><h3 :aria-label="`${player.name}, ${player.pos}`"><span class="court-first-name">{{ player.name.split(' ')[0] }} <small>{{ player.pos }}</small></span><span class="court-last-name">{{ player.name.split(' ').slice(1).join(' ') }}</span></h3></div>
             <button class="court-photo" :aria-label="`View ${player.name} details`" @click="detailPlayerId = player.id"><img :src="player.img" :alt="player.name" decoding="async" @error="photoFallback" /></button>
-            <div class="court-player-info"><h3>{{ player.name }} <small>{{ player.pos }}</small></h3><button class="player-time" :aria-label="`Edit ${player.name} Game Time`" @click="openPlayerTime(player)">{{ formatTime(player.stintMs) }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m15 5 4 4M5 19l4-1L20 7a2.8 2.8 0 0 0-4-4L5 14z" /></svg></button></div>
-            <button class="sub-out" :disabled="isApplying" :aria-label="activeIncoming ? `Replace ${player.name} with ${activeIncoming.name}` : `Sub out ${player.name}`" @click="chooseOut(player)">{{ activeIncoming ? 'Swap' : 'Sub out' }}</button>
           </article>
           <p v-if="!court.length" class="empty-court">Open Bench to select your starters.</p>
         </div>
-        <div class="court-bottom"><button class="undo-button" :disabled="!canUndo" @click="emit('undo')">Undo</button><button class="bench-toggle" :aria-expanded="isBenchOpen" aria-controls="bench-drawer" @click="openBench">BENCH <span>{{ bench.length }}</span></button></div>
+        <div class="court-bottom"><button class="bench-toggle" :aria-expanded="isBenchOpen" aria-controls="bench-drawer" @click="openBench">BENCH <span>{{ bench.length }}</span></button><button class="undo-button" :disabled="!canUndo" @click="emit('undo')">Undo</button></div>
       </section>
       <div v-if="isBenchOpen" class="bench-backdrop" @click="closeBench"></div>
       <aside id="bench-drawer" class="bench-drawer" :class="{ open: isBenchOpen }" aria-label="Bench">
@@ -185,8 +185,9 @@ function confirmModal() {
           <div v-if="visibleBench.length" class="bench-grid" :style="{ '--bench-rows': Math.ceil(visibleBench.length / 4) }">
             <button v-for="player in visibleBench" :key="player.id" class="bench-player" :class="{ 'is-ready': plan.readyIds.includes(player.id) }"
               :aria-label="selectedOut ? `Sub in ${player.name} for ${selectedOut.name}` : court.length < 5 ? `Sub in ${player.name}` : `${plan.readyIds.includes(player.id) ? 'Unmark' : 'Mark'} ${player.name} ready`" :aria-description="`${player.pos}. Total Time ${formatTime(player.totalMs)}.`" :aria-pressed="plan.readyIds.includes(player.id)" :disabled="isApplying || (!selectedOut && court.length >= 5 && plan.readyIds.length >= 5 && !plan.readyIds.includes(player.id))" @click="chooseIn(player)">
-              <span class="bench-player-heading"><img class="bench-photo" :src="player.img" alt="" loading="lazy" decoding="async" @error="photoFallback" /><span class="bench-player-name"><span>{{ player.name.split(' ')[0] }}</span><span>{{ player.name.split(' ').slice(1).join(' ') }}</span></span></span>
-              <span class="bench-player-meta"><span>{{ player.pos }}</span><strong v-if="plan.readyIds.includes(player.id)">Ready</strong><span v-else>{{ formatTime(player.totalMs) }}</span></span>
+              <img class="bench-photo" :src="player.img" alt="" loading="lazy" decoding="async" draggable="false" @error="photoFallback" />
+              <span class="bench-position-badge">{{ player.pos }}</span><span v-if="plan.readyIds.includes(player.id)" class="bench-ready-badge">Ready</span>
+              <span class="bench-player-caption"><span class="bench-player-name"><span>{{ player.name.split(' ')[0] }}</span><span>{{ player.name.split(' ').slice(1).join(' ') }}</span></span><span class="bench-player-meta"><span>Total</span><strong>{{ formatTime(player.totalMs) }}</strong></span></span>
             </button>
           </div>
           <p v-else class="empty-bench">{{ benchSearch ? 'No matching players. Try a first name or initials.' : 'No players at this position.' }}</p>
