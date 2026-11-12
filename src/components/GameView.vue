@@ -6,7 +6,6 @@ import TimeFields from './TimeFields.vue'
 import TotalTimeDialog from './TotalTimeDialog.vue'
 import { clockLimit, formatTime, parseTimeParts, periodLabel } from '../game/session.js'
 import { matchesPlayerSearch } from '../game/playerSearch.js'
-import { reconcileBenchOrder } from '../game/benchOrder.js'
 import { activateReady, chooseIncoming, chooseOutgoing, completeSubstitution, createSubstitutionPlan, reconcileCourtOrder, reconcilePlan } from '../game/substitutions.js'
 
 const props = defineProps({ players: Array, session: Object, canUndo: Boolean })
@@ -15,10 +14,6 @@ const isBenchOpen = ref(false)
 const detailPlayerId = ref(null)
 const plan = ref(createSubstitutionPlan())
 const courtOrder = ref(props.players.filter((player) => player.isOnCourt).map((player) => player.id))
-const benchOrderKey = 'drew.rotation.bench.order.v1'
-let savedBenchOrder
-try { savedBenchOrder = JSON.parse(localStorage.getItem(benchOrderKey) || 'null') } catch { /* Optional layout preference only. */ }
-const benchOrder = ref(reconcileBenchOrder(savedBenchOrder, props.players))
 const positionFilter = ref('ALL')
 const benchList = ref(null)
 const benchSearch = ref('')
@@ -31,7 +26,7 @@ const timeMinutes = ref('')
 const timeSeconds = ref('')
 const timeError = ref('')
 const court = computed(() => props.players.filter((player) => player.isOnCourt).sort((a, b) => b.stintMs - a.stintMs || courtOrder.value.indexOf(a.id) - courtOrder.value.indexOf(b.id)))
-const bench = computed(() => benchOrder.value.map((id) => props.players.find((player) => player.id === id)).filter((player) => player && !player.isOnCourt))
+const bench = computed(() => props.players.filter((player) => !player.isOnCourt))
 const selectedOut = computed(() => court.value.find((player) => player.id === plan.value.outgoingId))
 const readyPlayers = computed(() => plan.value.readyIds.map((id) => bench.value.find((player) => player.id === id)).filter(Boolean))
 const activeIncoming = computed(() => readyPlayers.value.find((player) => player.id === plan.value.activeId))
@@ -42,14 +37,13 @@ const status = computed(() => ended.value ? 'Period ended' : live.value ? 'Live'
 const mainText = computed(() => ended.value ? 'Period ended' : live.value ? 'Stop clock' : props.session.status === 'SETUP' ? 'Confirm starters' : 'Start clock')
 const nextPeriod = computed(() => props.session.period === 1 ? '2nd half' : props.session.period === 2 ? 'overtime' : 'next overtime')
 const dialogTitle = computed(() => ({ clock: 'Sync game clock', player: 'Edit Game Time', new: 'Start a new game?', period: `Start ${nextPeriod.value}?` })[modal.value])
-const visibleBench = computed(() => bench.value.filter((player) => (positionFilter.value === 'ALL' || player.pos === positionFilter.value) && matchesPlayerSearch(player, benchSearch.value)))
+// Include on-court players so every player keeps the same seat, also within a filter.
+const visibleBench = computed(() => props.players.filter((player) => (positionFilter.value === 'ALL' || player.pos === positionFilter.value) && matchesPlayerSearch(player, benchSearch.value)))
 
 watch(() => props.players.filter((player) => player.isOnCourt).map((player) => player.id).join(','), () => {
   courtOrder.value = reconcileCourtOrder(courtOrder.value, props.players)
   plan.value = reconcilePlan(plan.value, props.players)
-  benchOrder.value = reconcileBenchOrder(benchOrder.value, props.players)
-  try { localStorage.setItem(benchOrderKey, JSON.stringify(benchOrder.value)) } catch { /* Keep seats stable for this visit even without storage. */ }
-}, { immediate: true })
+})
 function photoFallback(event) { event.target.onerror = null; event.target.src = '/icon.png' }
 function setTimeInput(seconds) {
   timeMinutes.value = String(Math.floor(seconds / 60))
@@ -74,7 +68,7 @@ function chooseOut(player) {
   else openBench()
 }
 function chooseIn(player) {
-  if (isApplying.value) return
+  if (isApplying.value || player.isOnCourt) return
   const choice = chooseIncoming(plan.value, player.id, props.players)
   plan.value = choice.plan
   if (choice.action) commitSubstitution(choice.action)
@@ -181,19 +175,18 @@ function confirmModal() {
       </section>
       <div v-if="isBenchOpen" class="bench-backdrop" @click="closeBench"></div>
       <aside id="bench-drawer" class="bench-drawer" :class="{ open: isBenchOpen }" aria-label="Bench">
-        <div class="bench-heading"><h2>BENCH <small>{{ bench.length }} PLAYERS</small></h2><button class="bench-close" aria-label="Close bench" @click="closeBench">Close</button></div>
+        <div class="bench-heading"><h2>BENCH <small>{{ bench.length }} AVAILABLE</small></h2><button class="bench-close" aria-label="Close bench" @click="closeBench">Close</button></div>
         <div class="bench-search"><input v-model="benchSearch" type="search" aria-label="Search bench by name or initials" placeholder="Name, nickname or initials" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" @input="searchBench" /><button v-if="benchSearch" aria-label="Clear player search" @click="benchSearch = ''; searchBench()">Clear</button></div>
         <div class="bench-filters" role="group" aria-label="Filter bench by position">
           <button v-for="position in ['ALL', 'PG', 'SG', 'SF', 'PF', 'C']" :key="position" :aria-label="position === 'ALL' ? 'All positions' : `Filter ${position}`" :aria-pressed="positionFilter === position" :class="{ active: positionFilter === position }" @click="setPosition(position)">{{ position === 'ALL' ? 'All' : position }}</button>
         </div>
-        <ReadyQueue v-if="readyPlayers.length" :players="readyPlayers" :active-id="plan.activeId" @select="plan = activateReady(plan, $event)" @clear="plan = createSubstitutionPlan()" />
         <div class="bench-instruction" role="status"><template v-if="selectedOut"><strong>{{ selectedOut.displayName }}</strong> out · tap who goes in.<button @click="plan = { ...plan, outgoingId: null }">Cancel</button></template><template v-else>{{ court.length === 5 ? 'Tap incoming players. Then choose who comes out.' : 'Tap a player to fill an open spot.' }}</template></div>
         <div ref="benchList" class="bench-list mobile-scroll">
-          <div v-if="visibleBench.length" class="bench-grid" :style="{ '--bench-rows': Math.ceil(visibleBench.length / 4), '--bench-narrow-rows': Math.ceil(visibleBench.length / 3) }">
-            <button v-for="player in visibleBench" :key="player.id" class="bench-player" :class="{ 'is-ready': plan.readyIds.includes(player.id) }"
-              :aria-label="selectedOut ? `Sub in ${player.name} for ${selectedOut.name}` : court.length < 5 ? `Sub in ${player.name}` : `${plan.readyIds.includes(player.id) ? 'Unmark' : 'Mark'} ${player.name} ready`" :aria-description="`${player.pos}. Total Time ${formatTime(player.totalMs)}.`" :aria-pressed="plan.readyIds.includes(player.id)" :disabled="isApplying || (!selectedOut && court.length >= 5 && plan.readyIds.length >= 5 && !plan.readyIds.includes(player.id))" @click="chooseIn(player)">
+          <div v-if="visibleBench.length" class="bench-grid">
+            <button v-for="player in visibleBench" :key="player.id" :data-player-id="player.id" class="bench-player" :class="{ 'is-ready': plan.readyIds.includes(player.id), 'is-on-court': player.isOnCourt }"
+              :aria-label="player.isOnCourt ? `${player.name}, on court` : selectedOut ? `Sub in ${player.name} for ${selectedOut.name}` : court.length < 5 ? `Sub in ${player.name}` : `${plan.readyIds.includes(player.id) ? 'Unmark' : 'Mark'} ${player.name} ready`" :aria-description="`${player.pos}. Total Time ${formatTime(player.totalMs)}.`" :aria-pressed="plan.readyIds.includes(player.id)" :disabled="player.isOnCourt || isApplying || (!selectedOut && court.length >= 5 && plan.readyIds.length >= 5 && !plan.readyIds.includes(player.id))" @click="chooseIn(player)">
               <img class="bench-photo" :src="player.img" alt="" loading="lazy" decoding="async" draggable="false" @error="photoFallback" />
-              <span class="bench-position-badge">{{ player.pos }}</span><span v-if="plan.readyIds.includes(player.id)" class="bench-ready-badge">Ready</span>
+              <span class="bench-position-badge">{{ player.pos }}</span><span v-if="player.isOnCourt" class="bench-court-badge">On court</span><span v-else-if="plan.readyIds.includes(player.id)" class="bench-ready-badge">Ready</span>
               <span class="bench-player-caption"><span class="bench-player-name">{{ player.displayName }}</span><span class="bench-player-meta"><span>Total</span><strong>{{ formatTime(player.totalMs) }}</strong></span></span>
             </button>
           </div>
