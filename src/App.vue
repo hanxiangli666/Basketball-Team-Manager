@@ -176,7 +176,7 @@ async function login(password) {
   try {
     const response = await fetch('/api/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }), signal: AbortSignal.timeout(8000) })
     if (!response.ok) {
-      loginError.value = response.status === 401 ? '密码不正确，请重试。' : response.status === 429 ? '尝试次数过多，请稍后再试。' : '暂时无法连接，请稍后重试。'
+      loginError.value = response.status === 401 ? 'Incorrect password. Please try again.' : response.status === 429 ? 'Too many attempts. Please try again later.' : 'Unable to connect. Please try again.'
       return
     }
     connection?.close()
@@ -194,7 +194,7 @@ async function login(password) {
       },
       onAccess: (allowed) => { canControl.value = allowed; if (!allowed) { history.value = []; archivePending() } },
       onStatus: (status) => { syncStatus.value = status },
-      onExpired: () => { authenticated.value = false; canControl.value = false; takeoverConfirm.value = false; loginError.value = '登录已过期，请重新输入密码。'; view.value = 'login' },
+      onExpired: () => { authenticated.value = false; canControl.value = false; takeoverConfirm.value = false; loginError.value = 'Your session has expired. Please enter the password again.'; view.value = 'login' },
       onLostControl: () => {
         history.value = []
         archivePending()
@@ -214,7 +214,7 @@ async function login(password) {
     connection?.close()
     connection = null
     canControl.value = false
-    loginError.value = '暂时无法连接，请检查网络后重试。'
+    loginError.value = 'Unable to connect. Check your connection and try again.'
   } finally { loginBusy.value = false }
 }
 
