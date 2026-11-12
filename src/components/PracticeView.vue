@@ -16,7 +16,7 @@ try {
 const category = computed(() => practiceCategories.find((item) => item.key === selectedKey.value))
 const lead = computed(() => practiceLeaders(props.players))
 const leaderIds = computed(() => new Set(lead.value.players.map((player) => player.id)))
-const leaderText = computed(() => lead.value.players.length === 1 ? lead.value.players[0].name
+const leaderText = computed(() => lead.value.players.length === 1 ? lead.value.players[0].displayName
   : lead.value.players.length > 1 ? `${lead.value.players.length} tied leaders` : 'No points yet')
 const resetOpen = ref(false)
 const lastScoredId = ref(null)
@@ -42,8 +42,6 @@ function addPoint(player) {
 function undoPoint() { emit('undo'); lastScoredId.value = null; feedback.value = 'Last point undone.' }
 function resetPractice() { emit('reset-practice'); resetOpen.value = false; lastScoredId.value = null; feedback.value = 'Practice reset.' }
 function photoFallback(event) { event.target.onerror = null; event.target.src = '/icon.png' }
-function firstName(name) { return name.split(' ')[0] }
-function lastName(name) { return name.split(' ').slice(1).join(' ') }
 onBeforeUnmount(() => clearTimeout(flashTimer))
 </script>
 
@@ -62,7 +60,7 @@ onBeforeUnmount(() => clearTimeout(flashTimer))
       <section class="practice-roster" aria-label="Practice scoring grid">
         <button v-for="player in players" :key="player.id" class="practice-card" :class="{ 'is-leader': leaderIds.has(player.id), 'just-scored': lastScoredId === player.id }"
           :aria-label="`Add ${category.title} for ${player.name}`" :aria-description="`${category.title}: ${player.practiceStats?.[category.key] || 0}. Total: ${player.practiceTotal || 0}.`" @click="addPoint(player)">
-          <span class="practice-player-heading"><img class="practice-photo" :src="player.img" alt="" loading="lazy" decoding="async" @error="photoFallback" /><span class="practice-player-name"><span>{{ firstName(player.name) }}</span><span>{{ lastName(player.name) }}</span></span></span>
+          <span class="practice-player-heading"><img class="practice-photo" :src="player.img" alt="" loading="lazy" decoding="async" @error="photoFallback" /><span class="practice-player-name">{{ player.displayName }}</span></span>
           <span class="practice-player-score"><b>{{ player.practiceTotal || 0 }}</b><span class="practice-stat-count">{{ category.label }} <strong>{{ player.practiceStats?.[category.key] || 0 }}</strong></span></span>
         </button>
       </section>

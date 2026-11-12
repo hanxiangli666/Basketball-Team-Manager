@@ -18,7 +18,7 @@ function photoFallback(event) { event.target.onerror = null; event.target.src = 
     <ol class="totals-list mobile-scroll">
       <li v-for="(player, index) in ranked" :key="player.id" class="total-player">
         <span class="total-rank">{{ index + 1 }}</span><img :src="player.img" :alt="player.name" loading="lazy" @error="photoFallback" />
-        <div><h3>{{ player.name }}</h3><p>{{ player.pos }}<span v-if="player.isOnCourt" class="total-on-court"> · On court</span></p></div>
+        <div><h3 :aria-label="player.name">{{ player.displayName }}</h3><p>{{ player.pos }}<span v-if="player.isOnCourt" class="total-on-court"> · On court</span></p></div>
         <strong>{{ formatTime(player.totalMs) }}</strong>
       </li>
     </ol>

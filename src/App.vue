@@ -4,11 +4,13 @@ import LandingView from './components/LandingView.vue'
 import GameView from './components/GameView.vue'
 import PracticeView from './components/PracticeView.vue'
 import { roster } from './data/roster.js'
+import { createPlayerDisplayNames } from './data/playerNames.js'
 import { createEmptyPracticeStats } from './data/players.js'
 import { applyAction, createSession, restoreSession, settleSession, STORAGE_KEY } from './game/session.js'
 import { changePracticeStat, undoPracticeStat } from './practice/scoring.js'
 
 const view = ref('landing')
+const displayNames = createPlayerDisplayNames(roster)
 const session = shallowRef(createSession(roster))
 const history = ref([])
 const notice = ref('')
@@ -44,6 +46,7 @@ try {
 const players = computed(() => roster.map((player) => ({
   ...player,
   ...session.value.players.find((state) => state.id === player.id),
+  displayName: displayNames.get(player.id),
   practiceStats: practice.value[player.id] || createEmptyPracticeStats(),
   practiceTotal: Object.values(practice.value[player.id] || {}).reduce((sum, value) => sum + value, 0),
 })))
