@@ -2,7 +2,7 @@
 export const createSubstitutionPlan = () => ({ readyIds: [], activeId: null, outgoingId: null })
 
 export function reconcilePlan(plan, players) {
-  const readyIds = [...new Set(plan.readyIds)].filter((id) => players.some((player) => player.id === id && !player.isOnCourt)).slice(0, 5)
+  const readyIds = [...new Set(plan.readyIds)].filter((id) => players.some((player) => player.id === id && !player.isOnCourt && !player.isInjured)).slice(0, 5)
   return {
     readyIds,
     activeId: readyIds.includes(plan.activeId) ? plan.activeId : readyIds[0] ?? null,
@@ -16,7 +16,7 @@ export function activateReady(plan, playerId) {
 
 export function chooseIncoming(plan, playerId, players) {
   const next = reconcilePlan(plan, players)
-  if (!players.some((player) => player.id === playerId && !player.isOnCourt)) return { plan: next }
+  if (!players.some((player) => player.id === playerId && !player.isOnCourt && !player.isInjured)) return { plan: next }
   if (next.outgoingId !== null) return { plan: next, action: { type: 'swap', outId: next.outgoingId, playerId } }
   if (players.filter((player) => player.isOnCourt).length < 5) return { plan: next, action: { type: 'toggle', playerId } }
   const readyIds = next.readyIds.includes(playerId)

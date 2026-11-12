@@ -1,3 +1,9 @@
 name = "drew-tracker-github"
 compatibility_date = "2026-05-05"
 pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "drew-mbb-shared-game"
+database_id = "c0e414cb-51c6-4780-9c94-85466d3deb01"
+migrations_dir = "migrations"

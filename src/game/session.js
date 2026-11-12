@@ -20,17 +20,19 @@ export function formatTime(ms, countdown = false) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-export function createSession(roster) {
+export function createSession(roster, injuredIds = []) {
   return {
     version: SESSION_VERSION,
     period: 1,
     clockMs: periodDuration(1),
     status: 'SETUP',
     lastTickAt: null,
+    startingLineup: null,
     defaultLineupKey: roster.filter((player) => player.starter).map((player) => player.id).sort((a, b) => a - b).join(','),
     players: roster.map((player) => ({
       id: player.id,
-      isOnCourt: Boolean(player.starter),
+      isOnCourt: Boolean(player.starter) && !injuredIds.includes(player.id),
+      isInjured: injuredIds.includes(player.id),
       stintMs: 0,
       totalMs: 0,
       restMs: 0,
@@ -81,6 +83,7 @@ export function applyAction(session, action, now = Date.now()) {
       if (next.status !== 'SETUP') throw new Error('Starters have already been confirmed.')
       if (courtCount() !== 5 && !action.allowShortHanded) throw new Error('Select five players before confirming.')
       next.status = 'PAUSED'
+      if (next.period === 1) next.startingLineup = next.players.filter((candidate) => candidate.isOnCourt).map((candidate) => candidate.id)
       break
     case 'clock': {
       if (next.halftime) throw new Error('End halftime before starting the game clock.')
@@ -92,11 +95,13 @@ export function applyAction(session, action, now = Date.now()) {
         if (courtCount() !== 5 && !action.allowShortHanded) throw new Error('Select five players before starting the clock.')
         next.status = 'PLAYING'
         next.lastTickAt = now
+        if (session.status === 'SETUP' && next.period === 1) next.startingLineup = next.players.filter((candidate) => candidate.isOnCourt).map((candidate) => candidate.id)
       }
       break
     }
     case 'toggle': {
       if (!player) throw new Error('Player not found.')
+      if (!player.isOnCourt && player.isInjured) throw new Error('This player is injured.')
       if (!player.isOnCourt && courtCount() >= 5) throw new Error('Select a player to sub out first.')
       player.isOnCourt = !player.isOnCourt
       if (!player.isOnCourt) player.lastSubOutClockMs = next.clockMs
@@ -107,6 +112,7 @@ export function applyAction(session, action, now = Date.now()) {
     case 'swap': {
       const outgoing = next.players.find((candidate) => candidate.id === action.outId)
       if (!outgoing?.isOnCourt || !player || player.isOnCourt) throw new Error('Choose one player on court and one on the bench.')
+      if (player.isInjured) throw new Error('This player is injured.')
       outgoing.isOnCourt = false
       outgoing.lastSubOutClockMs = next.clockMs
       outgoing.stintMs = 0
@@ -142,6 +148,12 @@ export function applyAction(session, action, now = Date.now()) {
       if (player.totalMs > 0) player.hasPlayed = true
       break
     }
+    case 'set-injured': {
+      if (!player || typeof action.injured !== 'boolean') throw new Error('Choose a valid player.')
+      if (action.injured && player.isOnCourt) throw new Error('Sub this player out before marking an injury.')
+      player.isInjured = action.injured
+      break
+    }
     case 'enter-halftime': {
       if (next.period !== 1 || next.status === 'PLAYING') throw new Error('Pause the 1st-half clock before opening halftime.')
       next.halftime = next.halftime || createHalftime()
@@ -173,6 +185,10 @@ export function applyAction(session, action, now = Date.now()) {
       next.status = 'PAUSED'
       next.lastTickAt = null
       delete next.halftime
+      if (next.period === 2) {
+        const starters = next.startingLineup ?? next.defaultLineupKey.split(',').filter(Boolean).map(Number)
+        next.players.forEach((candidate) => { candidate.isOnCourt = starters.includes(candidate.id) && !candidate.isInjured })
+      }
       next.players.forEach((candidate) => { candidate.stintMs = 0; candidate.restMs = 0 })
       break
     }
@@ -195,6 +211,11 @@ export function restoreSession(raw, roster, now = Date.now()) {
   }
   const next = createSession(roster)
   Object.assign(next, { period: saved.period, clockMs: saved.clockMs, status: saved.status, lastTickAt: saved.lastTickAt })
+  if (saved.startingLineup !== undefined && saved.startingLineup !== null) {
+    if (!Array.isArray(saved.startingLineup) || saved.startingLineup.length > 5 || new Set(saved.startingLineup).size !== saved.startingLineup.length
+      || !saved.startingLineup.every((id) => Number.isSafeInteger(id) && id >= 0)) throw new Error('Saved starters could not be read.')
+    next.startingLineup = saved.startingLineup.filter((id) => roster.some((player) => player.id === id))
+  }
   if (saved.period === 1 && saved.status !== 'PLAYING') {
     const halftime = restoreHalftime(saved.halftime, now)
     if (halftime) next.halftime = halftime
@@ -205,9 +226,11 @@ export function restoreSession(raw, roster, now = Date.now()) {
     if (!['stintMs', 'totalMs', 'restMs'].every((key) => finite(stored[key]))
       || typeof stored.isOnCourt !== 'boolean' || typeof stored.hasPlayed !== 'boolean'
       || stored.stintMs > stored.totalMs) throw new Error('Saved player data could not be read.')
+    const isInjured = stored.isInjured ?? false
+    if (typeof isInjured !== 'boolean' || (isInjured && stored.isOnCourt)) throw new Error('Saved player availability could not be read.')
     const lastSubOutClockMs = stored.lastSubOutClockMs ?? null
     if (lastSubOutClockMs !== null && !finite(lastSubOutClockMs)) throw new Error('Saved substitution time could not be read.')
-    return { id: player.id, isOnCourt: stored.isOnCourt, stintMs: stored.stintMs, totalMs: stored.totalMs,
+    return { id: player.id, isOnCourt: stored.isOnCourt, isInjured, stintMs: stored.stintMs, totalMs: stored.totalMs,
       restMs: stored.restMs, hasPlayed: stored.hasPlayed, lastSubOutClockMs }
   })
   if (next.players.filter((player) => player.isOnCourt).length > 5) throw new Error('Saved lineup is invalid.')
@@ -216,7 +239,7 @@ export function restoreSession(raw, roster, now = Date.now()) {
   if (saved.defaultLineupKey !== next.defaultLineupKey && next.status === 'SETUP' && next.period === 1
     && next.players.every((player) => !player.hasPlayed && player.totalMs === 0 && player.stintMs === 0 && player.restMs === 0)) {
     const starters = new Set(roster.filter((player) => player.starter).map((player) => player.id))
-    next.players.forEach((player) => { player.isOnCourt = starters.has(player.id) })
+    next.players.forEach((player) => { player.isOnCourt = starters.has(player.id) && !player.isInjured })
   }
   return settleSession(next, now)
 }

@@ -9,10 +9,10 @@ import { groupBenchSeats } from '../game/benchGroups.js'
 import { orderCourtPlayers } from '../game/courtOrder.js'
 import { activateReady, chooseIncoming, chooseOutgoing, completeSubstitution, createSubstitutionPlan, reconcileCourtOrder, reconcilePlan } from '../game/substitutions.js'
 
-const props = defineProps({ players: Array, session: Object, canUndo: Boolean })
-const emit = defineEmits(['switch-view', 'action', 'main-action', 'new-game', 'undo'])
+const props = defineProps({ players: Array, session: Object, canUndo: Boolean, readOnly: Boolean, syncStatus: String })
+const emit = defineEmits(['switch-view', 'action', 'main-action', 'new-game', 'undo', 'take-control'])
 const isBenchOpen = ref(false)
-const detailPlayerId = ref(null)
+const editingInjuries = ref(false)
 const plan = ref(createSubstitutionPlan())
 const courtOrder = ref(orderCourtPlayers(props.players, [], props.session.status === 'SETUP').map((player) => player.id))
 const menuOpen = ref(false)
@@ -24,11 +24,10 @@ const timeMinutes = ref('')
 const timeSeconds = ref('')
 const timeError = ref('')
 const court = computed(() => orderCourtPlayers(props.players, courtOrder.value, props.session.status === 'SETUP'))
-const bench = computed(() => props.players.filter((player) => !player.isOnCourt))
+const bench = computed(() => props.players.filter((player) => !player.isOnCourt && !player.isInjured))
 const selectedOut = computed(() => court.value.find((player) => player.id === plan.value.outgoingId))
 const readyPlayers = computed(() => plan.value.readyIds.map((id) => bench.value.find((player) => player.id === id)).filter(Boolean))
 const activeIncoming = computed(() => readyPlayers.value.find((player) => player.id === plan.value.activeId))
-const detailPlayer = computed(() => props.players.find((player) => player.id === detailPlayerId.value))
 const live = computed(() => props.session.status === 'PLAYING')
 const ended = computed(() => props.session.clockMs === 0)
 const status = computed(() => props.session.halftime ? 'Halftime' : ended.value ? 'Period ended' : live.value ? 'Live' : props.session.status === 'SETUP' ? 'Ready' : 'Paused')
@@ -37,10 +36,11 @@ const nextPeriod = computed(() => props.session.period === 1 ? '2nd half' : prop
 const dialogTitle = computed(() => ({ clock: 'Sync game clock', player: 'Edit Game Time', new: 'Start a new game?', period: `Start ${nextPeriod.value}?` })[modal.value])
 const benchGroups = computed(() => groupBenchSeats(props.players))
 
-watch(() => props.players.filter((player) => player.isOnCourt).map((player) => player.id).join(','), () => {
+watch(() => props.players.map((player) => `${player.id}:${player.isOnCourt}:${player.isInjured}`).join(','), () => {
   courtOrder.value = reconcileCourtOrder(courtOrder.value, props.players)
   plan.value = reconcilePlan(plan.value, props.players)
 })
+watch(() => props.readOnly, (value) => { if (value) { plan.value = createSubstitutionPlan(); editingInjuries.value = false; modal.value = null; menuOpen.value = false } })
 function photoFallback(event) { event.target.onerror = null; event.target.src = '/icon.png' }
 function setTimeInput(seconds) {
   timeMinutes.value = String(Math.floor(seconds / 60))
@@ -59,13 +59,19 @@ function openPlayerTime(player) {
 }
 function chooseOut(player) {
   if (isApplying.value) return
+  editingInjuries.value = false
   const choice = chooseOutgoing(plan.value, player.id, props.players)
   plan.value = choice.plan
   if (choice.action) commitSubstitution(choice.action)
   else openBench()
 }
 function chooseIn(player) {
-  if (isApplying.value || player.isOnCourt) return
+  if (isApplying.value || player.isOnCourt || props.readOnly) return
+  if (editingInjuries.value) {
+    emit('action', { type: 'set-injured', playerId: player.id, injured: !player.isInjured, label: `${player.displayName} ${player.isInjured ? 'available' : 'injured'}` })
+    return
+  }
+  if (player.isInjured) return
   const choice = chooseIncoming(plan.value, player.id, props.players)
   plan.value = choice.plan
   if (choice.action) commitSubstitution(choice.action)
@@ -82,10 +88,11 @@ function commitSubstitution(action) {
     nextTick(() => { isApplying.value = false })
   })
 }
-function closeBench() { isBenchOpen.value = false; plan.value = { ...plan.value, outgoingId: null } }
+function closeBench() { isBenchOpen.value = false; editingInjuries.value = false; plan.value = { ...plan.value, outgoingId: null } }
 function openBench() { isBenchOpen.value = true }
 function openHalftime() {
   menuOpen.value = false
+  if (props.session.halftime) { emit('switch-view', 'halftime'); return }
   emit('action', { type: 'enter-halftime' }, (success) => { if (success) emit('switch-view', 'halftime') })
 }
 function openPeriod() { menuOpen.value = false; setTimeInput(300); modal.value = 'period' }
@@ -121,7 +128,7 @@ function confirmModal() {
 </script>
 
 <template>
-  <main class="game-view" @keydown.esc="menuOpen = false; closeBench()">
+  <main class="game-view" :class="{ 'is-viewer': readOnly }" @keydown.esc="menuOpen = false; closeBench()">
     <div class="game-top">
       <header class="game-header">
         <div class="game-header-left">
@@ -131,26 +138,27 @@ function confirmModal() {
           <div class="game-brand"><h1>DREW MBB</h1><div class="game-meta"><span class="period-label">{{ periodLabel(session.period) }}</span><span class="clock-status" :class="{ live, ended }"><i aria-hidden="true"></i>{{ status }}</span></div></div>
         </div>
         <button class="totals-toggle" aria-label="View Total Time" @click="showTotals = true"><span>Total</span><span>Time</span></button>
-        <button class="clock-display" aria-label="Sync game clock" :disabled="Boolean(session.halftime)" @click="openClock">
+        <button class="clock-display" aria-label="Sync game clock" :disabled="readOnly || Boolean(session.halftime)" @click="openClock">
           <strong role="timer" aria-live="off">{{ formatTime(session.clockMs, true) }}</strong>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m15 5 4 4M5 19l4-1L20 7a2.8 2.8 0 0 0-4-4L5 14z" /></svg>
         </button>
       </header>
       <section class="game-controls" aria-label="Game clock controls">
-        <div class="clock-control-row">
+        <div v-if="!readOnly" class="clock-control-row">
           <button class="clock-adjust" aria-label="Add 1 second" :disabled="Boolean(session.halftime) || session.clockMs >= clockLimit(session.period)" @click="emit('action', { type: 'adjust-clock', delta: 1 })"><span>+1</span><small>s</small></button>
           <button class="clock-adjust" aria-label="Subtract 1 second" :disabled="Boolean(session.halftime) || ended" @click="emit('action', { type: 'adjust-clock', delta: -1 })"><span>−1</span><small>s</small></button>
           <button class="main-action" :class="{ running: live }" :disabled="ended && !session.halftime" @click="emit('main-action')">
             {{ mainText }}
           </button>
         </div>
+        <div v-else class="viewer-controls"><span>View only</span><button @click="emit('take-control')">Take control</button></div>
       </section>
       <button v-if="menuOpen" class="game-menu-backdrop" aria-label="Close game options" tabindex="-1" @click="menuOpen = false"></button>
       <div v-if="menuOpen" id="game-options" class="game-options" role="menu" aria-label="Game options">
         <button role="menuitem" @click="backToMenu">Main menu</button>
-        <button v-if="session.period === 1" role="menuitem" :disabled="live" @click="openHalftime">Halftime</button>
-        <button role="menuitem" :disabled="live || session.status === 'SETUP'" @click="openPeriod">{{ session.period === 1 ? '2nd half' : 'Overtime' }}</button>
-        <button role="menuitem" class="new-game" :disabled="live" @click="openNewGame">New game</button>
+        <button v-if="session.period === 1" role="menuitem" :disabled="live || (readOnly && !session.halftime)" @click="openHalftime">Halftime</button>
+        <button role="menuitem" :disabled="readOnly || live || session.status === 'SETUP'" @click="openPeriod">{{ session.period === 1 ? '2nd half' : 'Overtime' }}</button>
+        <button role="menuitem" class="new-game" :disabled="readOnly || live" @click="openNewGame">New game</button>
       </div>
     </div>
     <div class="rotation-area">
@@ -159,42 +167,41 @@ function confirmModal() {
         <div class="court-heading"><h2>{{ activeIncoming ? 'Choose who comes out' : 'ON COURT' }}<small v-if="!activeIncoming">Game Time</small></h2><span>{{ court.length }}/5</span></div>
         <div class="court-list mobile-scroll">
           <article v-for="player in court" :key="player.id" class="court-player" :class="{ selected: plan.outgoingId === player.id, 'can-swap': Boolean(activeIncoming), 'alert-level-1': player.stintMs >= 180000, 'alert-level-2': player.stintMs >= 240000, 'alert-level-3': player.stintMs >= 300000 }">
-            <div class="court-actions"><button class="sub-out" :disabled="isApplying" :aria-label="activeIncoming ? `Replace ${player.name} with ${activeIncoming.name}` : `Sub out ${player.name}`" @click="chooseOut(player)">{{ activeIncoming ? 'Swap' : 'Sub out' }}</button><button class="player-time" :aria-label="`Edit ${player.name} Game Time`" @click="openPlayerTime(player)">{{ formatTime(player.stintMs) }}</button></div>
+            <div class="court-actions"><button v-if="!readOnly" class="sub-out" :disabled="isApplying" :aria-label="activeIncoming ? `Replace ${player.name} with ${activeIncoming.name}` : `Sub out ${player.name}`" @click="chooseOut(player)">{{ activeIncoming ? 'Swap' : 'Sub out' }}</button><button class="player-time" :disabled="readOnly" :aria-label="`Edit ${player.name} Game Time`" @click="openPlayerTime(player)">{{ formatTime(player.stintMs) }}</button></div>
             <div class="court-player-info"><h3 :aria-label="`${player.name}, ${player.pos}`">{{ player.displayName }}</h3></div>
-            <button class="court-photo" :aria-label="`View ${player.name} details`" @click="detailPlayerId = player.id"><img :src="player.img" :alt="player.name" decoding="async" @error="photoFallback" /><span class="court-player-position" aria-hidden="true">{{ player.pos }}</span></button>
+            <div class="court-photo"><img :src="player.img" :alt="player.name" decoding="async" @error="photoFallback" /><span class="court-player-position" aria-hidden="true">{{ player.pos }}</span></div>
           </article>
           <p v-if="!court.length" class="empty-court">Open Bench to select your starters.</p>
         </div>
-        <div class="court-bottom"><button class="bench-toggle" :aria-expanded="isBenchOpen" aria-controls="bench-drawer" @click="openBench">BENCH <span>{{ bench.length }}</span></button><button class="undo-button" :disabled="!canUndo" @click="emit('undo')">Undo</button></div>
+        <div class="court-bottom"><button class="bench-toggle" :aria-expanded="isBenchOpen" aria-controls="bench-drawer" @click="openBench">BENCH <span>{{ bench.length }}</span></button><span class="sync-indicator" :class="{ offline: syncStatus === 'offline' }" role="status">{{ syncStatus === 'offline' ? 'Offline · reconnecting' : syncStatus === 'saving' ? 'Saving…' : readOnly ? 'Live view' : 'Live sync' }}</span><button class="undo-button" :disabled="readOnly || !canUndo" @click="emit('undo')">Undo</button></div>
       </section>
       <div v-if="isBenchOpen" class="bench-backdrop" @click="closeBench"></div>
       <aside id="bench-drawer" class="bench-drawer" :class="{ open: isBenchOpen }" aria-label="Bench">
-        <div class="bench-heading"><h2>BENCH <small role="status">{{ selectedOut ? `For ${selectedOut.displayName}` : `${bench.length} AVAILABLE` }}</small></h2><button v-if="selectedOut" class="bench-cancel" aria-label="Cancel sub out" @click="plan = { ...plan, outgoingId: null }">Cancel</button><button class="bench-close" aria-label="Close bench" @click="closeBench">Close</button></div>
+        <div class="bench-heading"><h2>BENCH <small role="status">{{ editingInjuries ? 'Tap to mark' : selectedOut ? `For ${selectedOut.displayName}` : `${bench.length} AVAILABLE` }}</small></h2><button v-if="selectedOut" class="bench-cancel" aria-label="Cancel sub out" @click="plan = { ...plan, outgoingId: null }">Cancel</button><button v-if="!readOnly && !selectedOut" class="bench-injuries" :aria-pressed="editingInjuries" @click="editingInjuries = !editingInjuries">{{ editingInjuries ? 'Done' : 'Injured' }}</button><button class="bench-close" aria-label="Close bench" @click="closeBench">Close</button></div>
         <div class="bench-list">
           <div class="bench-groups" :style="{ '--position-rows': benchGroups.length }">
             <section v-for="group in benchGroups" :key="group.position" class="bench-position-row" :aria-label="`${group.position} players`">
               <h3 class="bench-row-label">{{ group.position }}</h3>
               <div class="bench-grid" :style="{ '--position-count': group.players.length }">
-                <button v-for="player in group.players" :key="player.id" :data-player-id="player.id" class="bench-player" :class="{ 'is-ready': plan.readyIds.includes(player.id), 'is-on-court': player.isOnCourt }"
-                  :aria-label="player.isOnCourt ? `${player.name}, on court` : selectedOut ? `Sub in ${player.name} for ${selectedOut.name}` : court.length < 5 ? `Sub in ${player.name}` : `${plan.readyIds.includes(player.id) ? 'Unmark' : 'Mark'} ${player.name} ready`" :aria-description="`${player.pos}. Total Time ${formatTime(player.totalMs)}.`" :aria-pressed="plan.readyIds.includes(player.id)" :disabled="player.isOnCourt || isApplying || (!selectedOut && court.length >= 5 && plan.readyIds.length >= 5 && !plan.readyIds.includes(player.id))" @click="chooseIn(player)">
+                <button v-for="player in group.players" :key="player.id" :data-player-id="player.id" class="bench-player" :class="{ 'is-ready': !editingInjuries && plan.readyIds.includes(player.id), 'is-on-court': player.isOnCourt, 'is-injured': player.isInjured }"
+                  :aria-label="player.isOnCourt ? `${player.name}, on court` : editingInjuries ? `${player.isInjured ? 'Clear' : 'Mark'} injury for ${player.name}` : player.isInjured ? `${player.name}, injured` : selectedOut ? `Sub in ${player.name} for ${selectedOut.name}` : court.length < 5 ? `Sub in ${player.name}` : `${plan.readyIds.includes(player.id) ? 'Unmark' : 'Mark'} ${player.name} ready`" :aria-description="`${player.pos}. Total Time ${formatTime(player.totalMs)}.`" :aria-pressed="editingInjuries ? player.isInjured : plan.readyIds.includes(player.id)" :disabled="readOnly || player.isOnCourt || isApplying || (!editingInjuries && (player.isInjured || (!selectedOut && court.length >= 5 && plan.readyIds.length >= 5 && !plan.readyIds.includes(player.id))))" @click="chooseIn(player)">
                   <img class="bench-photo" :src="player.img" alt="" loading="lazy" decoding="async" draggable="false" @error="photoFallback" />
-                  <span v-if="player.isOnCourt" class="bench-court-badge">On court</span><span v-else-if="plan.readyIds.includes(player.id)" class="bench-ready-badge">Ready</span>
+                  <span v-if="player.isOnCourt" class="bench-court-badge">On court</span><span v-else-if="player.isInjured" class="bench-injured-badge">Injured</span><span v-else-if="!editingInjuries && plan.readyIds.includes(player.id)" class="bench-ready-badge">Ready</span>
                   <span class="bench-player-caption"><span class="bench-player-name">{{ player.displayName }}</span><span class="bench-player-meta"><span>Total</span><strong>{{ formatTime(player.totalMs) }}</strong></span></span>
                 </button>
               </div>
             </section>
           </div>
         </div>
-        <div class="bench-done"><button @click="closeBench">{{ readyPlayers.length ? `Done · ${readyPlayers.length} ready` : 'Back to court' }}</button></div>
+        <div class="bench-done"><button @click="editingInjuries ? editingInjuries = false : closeBench()">{{ editingInjuries ? 'Done' : readyPlayers.length ? `Done · ${readyPlayers.length} ready` : 'Back to court' }}</button></div>
       </aside>
     </div>
     <ConfirmDialog v-if="modal" :title="dialogTitle" :danger="modal === 'new'" :confirm-label="modal === 'clock' ? 'Sync time' : modal === 'player' ? 'Save time' : 'Confirm'" @cancel="modal = null" @confirm="confirmModal">
       <template v-if="modal === 'clock'"><p>Match the scoreboard. The current lineup’s minutes will adjust with the clock.</p><TimeFields v-model:minutes="timeMinutes" v-model:seconds="timeSeconds" prefix="clock" :invalid="Boolean(timeError)" @input="timeError = ''" /><p id="clock-error" class="field-error" role="alert">{{ timeError }}</p></template>
       <template v-else-if="modal === 'player'"><p class="edit-player-name">{{ editPlayer.name }}</p><p>Time for this rotation. Total Time updates too. The clock keeps running if live.</p><TimeFields v-model:minutes="timeMinutes" v-model:seconds="timeSeconds" prefix="player" :invalid="Boolean(timeError)" @input="timeError = ''" /><p id="player-error" class="field-error" role="alert">{{ timeError }}</p></template>
-      <template v-else-if="modal === 'period'"><p>Total Time and lineup will carry over.</p><template v-if="session.period >= 2"><TimeFields v-model:minutes="timeMinutes" v-model:seconds="timeSeconds" prefix="period" :invalid="Boolean(timeError)" @input="timeError = ''" /><p id="period-error" class="field-error" role="alert">{{ timeError }}</p></template><p v-else>Reset the clock to 20:00 for the 2nd half?</p></template>
-      <p v-else>Clear this game’s minutes and lineup? Practice stats will be kept.</p>
+      <template v-else-if="modal === 'period'"><p>{{ session.period === 1 ? 'Your 1st-half starters return. Total Time carries over.' : 'Total Time and lineup carry over.' }}</p><template v-if="session.period >= 2"><TimeFields v-model:minutes="timeMinutes" v-model:seconds="timeSeconds" prefix="period" :invalid="Boolean(timeError)" @input="timeError = ''" /><p id="period-error" class="field-error" role="alert">{{ timeError }}</p></template><p v-else>Reset the clock to 20:00 for the 2nd half?</p></template>
+      <p v-else>Clear this game’s minutes and lineup? Injured players and practice stats will be kept.</p>
     </ConfirmDialog>
     <TotalTimeDialog v-if="showTotals" :players="players" @close="showTotals = false" />
-    <ConfirmDialog v-if="detailPlayer" :title="detailPlayer.displayName" confirm-label="Done" @cancel="detailPlayerId = null" @confirm="detailPlayerId = null"><div class="detail-player"><img :src="detailPlayer.img" :alt="detailPlayer.name" @error="photoFallback" /><p>{{ detailPlayer.pos }} · {{ detailPlayer.isOnCourt ? 'ON COURT' : 'ON BENCH' }}</p><dl><div><dt>{{ detailPlayer.isOnCourt ? 'Time on court' : 'Rest duration' }}</dt><dd>{{ formatTime(detailPlayer.isOnCourt ? detailPlayer.stintMs : detailPlayer.restMs) }}</dd></div><div><dt>Last sub out</dt><dd>{{ detailPlayer.lastSubOutClockMs === null ? '--:--' : formatTime(detailPlayer.lastSubOutClockMs, true) }}</dd></div><div><dt>Total time</dt><dd>{{ formatTime(detailPlayer.totalMs) }}</dd></div></dl></div></ConfirmDialog>
   </main>
 </template>

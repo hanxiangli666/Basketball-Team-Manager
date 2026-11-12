@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/game/*.test.js"
+    "dev:full": "npm run build && wrangler pages dev dist --port 8788",
+    "test": "node --test tests/game/*.test.js tests/server/*.test.js tests/sync/*.test.js"
   },
   "dependencies": {
     "vue": "^3.5.32"
@@ -16,6 +17,7 @@
     "@tailwindcss/vite": "^4.2.4",
     "@vitejs/plugin-vue": "^6.0.6",
     "tailwindcss": "^4.2.4",
-    "vite": "^8.0.9"
+    "vite": "^8.0.9",
+    "wrangler": "4.160.1"
   }
 }

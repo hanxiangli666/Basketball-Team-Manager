@@ -1,0 +1,2 @@
+GAME_PASSWORD="set-the-team-password-locally"
+SESSION_SECRET="generate-a-random-secret-at-least-32-characters"
