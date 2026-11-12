@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import LandingView from './components/LandingView.vue'
 import GameView from './components/GameView.vue'
+import HalftimeView from './components/HalftimeView.vue'
 import PracticeView from './components/PracticeView.vue'
 import { roster } from './data/roster.js'
 import { createPlayerDisplayNames } from './data/playerNames.js'
@@ -30,6 +31,7 @@ try {
 } catch {
   storageWarning.value = 'Could not restore the saved game. Check your lineup before starting.'
 }
+if (session.value.halftime) view.value = 'halftime'
 try {
   const saved = JSON.parse(localStorage.getItem(practiceKey) || '{}')
   for (const player of roster) {
@@ -95,6 +97,7 @@ function act(action, onResult) {
 }
 
 function mainAction() {
+  if (session.value.halftime) { changeView('halftime'); return }
   const allowShortHanded = session.value.players.filter((player) => player.isOnCourt).length !== 5
   if (session.value.status !== 'PLAYING' && allowShortHanded
     && !window.confirm('Fewer than five players are on court. Continue?')) return
@@ -150,15 +153,20 @@ function resetPractice() {
 
 function refreshClock() {
   const previous = session.value
-  if (previous.status !== 'PLAYING') return
+  if (previous.status !== 'PLAYING' && previous.halftime?.status !== 'RUNNING') return
   const next = settleSession(previous, gameNow())
   // Check often, but redraw only when a visible second or game status changes.
-  if (next.status !== previous.status || Math.ceil(next.clockMs / 1000) !== Math.ceil(previous.clockMs / 1000)
+  if (next.status !== previous.status || next.halftime?.status !== previous.halftime?.status
+    || Math.ceil((next.halftime?.remainingMs ?? 0) / 1000) !== Math.ceil((previous.halftime?.remainingMs ?? 0) / 1000)
+    || Math.ceil(next.clockMs / 1000) !== Math.ceil(previous.clockMs / 1000)
     || next.players.some((player, index) => Math.floor(player.totalMs / 1000) !== Math.floor(previous.players[index].totalMs / 1000)
       || Math.floor(player.restMs / 1000) !== Math.floor(previous.players[index].restMs / 1000))) {
     session.value = next
   }
-  if (next.status === 'PAUSED') {
+  if (next.halftime?.status === 'ENDED') {
+    notify('Halftime is over. Time to return to court.')
+    persist()
+  } else if (next.status === 'PAUSED' && !next.halftime) {
     history.value = []
     notify('Period ended. The clock is stopped.')
     persist()
@@ -188,6 +196,7 @@ onBeforeUnmount(() => {
   <LandingView v-if="view === 'landing'" @switch-view="changeView" />
   <GameView v-else-if="view === 'game'" :players="players" :session="session" :can-undo="history.length > 0"
     @action="act" @main-action="mainAction" @undo="undo" @new-game="newGame" @switch-view="changeView" />
+  <HalftimeView v-else-if="view === 'halftime' && session.halftime" :timer="session.halftime" @action="act" @switch-view="changeView" />
   <PracticeView v-else :players="players" :can-undo="practiceHistory.length > 0" @switch-view="changeView"
     @update-practice-stat="updatePractice" @undo="undoPractice" @reset-practice="resetPractice" />
   <div v-if="notice" :class="view !== 'landing' && !noticeIsError ? 'sr-only' : 'toast'" role="status" aria-live="polite">{{ notice }}</div>

@@ -6,6 +6,7 @@ import TimeFields from './TimeFields.vue'
 import TotalTimeDialog from './TotalTimeDialog.vue'
 import { clockLimit, formatTime, parseTimeParts, periodLabel } from '../game/session.js'
 import { groupBenchSeats } from '../game/benchGroups.js'
+import { orderCourtPlayers } from '../game/courtOrder.js'
 import { activateReady, chooseIncoming, chooseOutgoing, completeSubstitution, createSubstitutionPlan, reconcileCourtOrder, reconcilePlan } from '../game/substitutions.js'
 
 const props = defineProps({ players: Array, session: Object, canUndo: Boolean })
@@ -13,7 +14,7 @@ const emit = defineEmits(['switch-view', 'action', 'main-action', 'new-game', 'u
 const isBenchOpen = ref(false)
 const detailPlayerId = ref(null)
 const plan = ref(createSubstitutionPlan())
-const courtOrder = ref(props.players.filter((player) => player.isOnCourt).map((player) => player.id))
+const courtOrder = ref(orderCourtPlayers(props.players, [], props.session.status === 'SETUP').map((player) => player.id))
 const menuOpen = ref(false)
 const isApplying = ref(false)
 const modal = ref(null)
@@ -22,7 +23,7 @@ const editPlayer = ref(null)
 const timeMinutes = ref('')
 const timeSeconds = ref('')
 const timeError = ref('')
-const court = computed(() => props.players.filter((player) => player.isOnCourt).sort((a, b) => b.stintMs - a.stintMs || courtOrder.value.indexOf(a.id) - courtOrder.value.indexOf(b.id)))
+const court = computed(() => orderCourtPlayers(props.players, courtOrder.value, props.session.status === 'SETUP'))
 const bench = computed(() => props.players.filter((player) => !player.isOnCourt))
 const selectedOut = computed(() => court.value.find((player) => player.id === plan.value.outgoingId))
 const readyPlayers = computed(() => plan.value.readyIds.map((id) => bench.value.find((player) => player.id === id)).filter(Boolean))
@@ -30,8 +31,8 @@ const activeIncoming = computed(() => readyPlayers.value.find((player) => player
 const detailPlayer = computed(() => props.players.find((player) => player.id === detailPlayerId.value))
 const live = computed(() => props.session.status === 'PLAYING')
 const ended = computed(() => props.session.clockMs === 0)
-const status = computed(() => ended.value ? 'Period ended' : live.value ? 'Live' : props.session.status === 'SETUP' ? 'Ready' : 'Paused')
-const mainText = computed(() => ended.value ? 'Period ended' : live.value ? 'Stop clock' : props.session.status === 'SETUP' ? 'Confirm starters' : 'Start clock')
+const status = computed(() => props.session.halftime ? 'Halftime' : ended.value ? 'Period ended' : live.value ? 'Live' : props.session.status === 'SETUP' ? 'Ready' : 'Paused')
+const mainText = computed(() => props.session.halftime ? 'View halftime' : ended.value ? 'Period ended' : live.value ? 'Stop clock' : props.session.status === 'SETUP' ? 'Confirm starters' : 'Start clock')
 const nextPeriod = computed(() => props.session.period === 1 ? '2nd half' : props.session.period === 2 ? 'overtime' : 'next overtime')
 const dialogTitle = computed(() => ({ clock: 'Sync game clock', player: 'Edit Game Time', new: 'Start a new game?', period: `Start ${nextPeriod.value}?` })[modal.value])
 const benchGroups = computed(() => groupBenchSeats(props.players))
@@ -83,12 +84,16 @@ function commitSubstitution(action) {
 }
 function closeBench() { isBenchOpen.value = false; plan.value = { ...plan.value, outgoingId: null } }
 function openBench() { isBenchOpen.value = true }
+function openHalftime() {
+  menuOpen.value = false
+  emit('action', { type: 'enter-halftime' }, (success) => { if (success) emit('switch-view', 'halftime') })
+}
 function openPeriod() { menuOpen.value = false; setTimeInput(300); modal.value = 'period' }
 function openNewGame() { menuOpen.value = false; modal.value = 'new' }
 function backToMenu() { menuOpen.value = false; emit('switch-view', 'landing') }
 function resetPlan() {
   plan.value = createSubstitutionPlan()
-  courtOrder.value = props.players.filter((player) => player.starter).map((player) => player.id)
+  courtOrder.value = benchGroups.value.flatMap((group) => group.players.filter((player) => player.starter).map((player) => player.id))
 }
 function confirmModal() {
   const needsTime = ['clock', 'player'].includes(modal.value) || (modal.value === 'period' && props.session.period >= 2)
@@ -126,16 +131,16 @@ function confirmModal() {
           <div class="game-brand"><h1>DREW MBB</h1><div class="game-meta"><span class="period-label">{{ periodLabel(session.period) }}</span><span class="clock-status" :class="{ live, ended }"><i aria-hidden="true"></i>{{ status }}</span></div></div>
         </div>
         <button class="totals-toggle" aria-label="View Total Time" @click="showTotals = true"><span>Total</span><span>Time</span></button>
-        <button class="clock-display" aria-label="Sync game clock" @click="openClock">
+        <button class="clock-display" aria-label="Sync game clock" :disabled="Boolean(session.halftime)" @click="openClock">
           <strong role="timer" aria-live="off">{{ formatTime(session.clockMs, true) }}</strong>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m15 5 4 4M5 19l4-1L20 7a2.8 2.8 0 0 0-4-4L5 14z" /></svg>
         </button>
       </header>
       <section class="game-controls" aria-label="Game clock controls">
         <div class="clock-control-row">
-          <button class="clock-adjust" aria-label="Add 1 second" :disabled="session.clockMs >= clockLimit(session.period)" @click="emit('action', { type: 'adjust-clock', delta: 1 })"><span>+1</span><small>s</small></button>
-          <button class="clock-adjust" aria-label="Subtract 1 second" :disabled="ended" @click="emit('action', { type: 'adjust-clock', delta: -1 })"><span>−1</span><small>s</small></button>
-          <button class="main-action" :class="{ running: live }" :disabled="ended" @click="emit('main-action')">
+          <button class="clock-adjust" aria-label="Add 1 second" :disabled="Boolean(session.halftime) || session.clockMs >= clockLimit(session.period)" @click="emit('action', { type: 'adjust-clock', delta: 1 })"><span>+1</span><small>s</small></button>
+          <button class="clock-adjust" aria-label="Subtract 1 second" :disabled="Boolean(session.halftime) || ended" @click="emit('action', { type: 'adjust-clock', delta: -1 })"><span>−1</span><small>s</small></button>
+          <button class="main-action" :class="{ running: live }" :disabled="ended && !session.halftime" @click="emit('main-action')">
             {{ mainText }}
           </button>
         </div>
@@ -143,6 +148,7 @@ function confirmModal() {
       <button v-if="menuOpen" class="game-menu-backdrop" aria-label="Close game options" tabindex="-1" @click="menuOpen = false"></button>
       <div v-if="menuOpen" id="game-options" class="game-options" role="menu" aria-label="Game options">
         <button role="menuitem" @click="backToMenu">Main menu</button>
+        <button v-if="session.period === 1" role="menuitem" :disabled="live" @click="openHalftime">Halftime</button>
         <button role="menuitem" :disabled="live || session.status === 'SETUP'" @click="openPeriod">{{ session.period === 1 ? '2nd half' : 'Overtime' }}</button>
         <button role="menuitem" class="new-game" :disabled="live" @click="openNewGame">New game</button>
       </div>
@@ -153,7 +159,7 @@ function confirmModal() {
         <div class="court-heading"><h2>{{ activeIncoming ? 'Choose who comes out' : 'ON COURT' }}<small v-if="!activeIncoming">Game Time</small></h2><span>{{ court.length }}/5</span></div>
         <div class="court-list mobile-scroll">
           <article v-for="player in court" :key="player.id" class="court-player" :class="{ selected: plan.outgoingId === player.id, 'can-swap': Boolean(activeIncoming), 'alert-level-1': player.stintMs >= 180000, 'alert-level-2': player.stintMs >= 240000, 'alert-level-3': player.stintMs >= 300000 }">
-            <div class="court-actions"><button class="sub-out" :disabled="isApplying" :aria-label="activeIncoming ? `Replace ${player.name} with ${activeIncoming.name}` : `Sub out ${player.name}`" @click="chooseOut(player)">{{ activeIncoming ? 'Swap' : 'Sub out' }}</button><button class="player-time" :aria-label="`Edit ${player.name} Game Time`" @click="openPlayerTime(player)">{{ formatTime(player.stintMs) }}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m15 5 4 4M5 19l4-1L20 7a2.8 2.8 0 0 0-4-4L5 14z" /></svg></button></div>
+            <div class="court-actions"><button class="sub-out" :disabled="isApplying" :aria-label="activeIncoming ? `Replace ${player.name} with ${activeIncoming.name}` : `Sub out ${player.name}`" @click="chooseOut(player)">{{ activeIncoming ? 'Swap' : 'Sub out' }}</button><button class="player-time" :aria-label="`Edit ${player.name} Game Time`" @click="openPlayerTime(player)">{{ formatTime(player.stintMs) }}</button></div>
             <div class="court-player-info"><h3 :aria-label="`${player.name}, ${player.pos}`">{{ player.displayName }}</h3></div>
             <button class="court-photo" :aria-label="`View ${player.name} details`" @click="detailPlayerId = player.id"><img :src="player.img" :alt="player.name" decoding="async" @error="photoFallback" /><span class="court-player-position" aria-hidden="true">{{ player.pos }}</span></button>
           </article>

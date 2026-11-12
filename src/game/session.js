@@ -1,3 +1,5 @@
+import { createHalftime, HALFTIME_MS, restoreHalftime, settleHalftime } from './halftime.js'
+
 // Game time is measured from timestamps, never from the number of timer callbacks.
 export const SESSION_VERSION = 1
 export const STORAGE_KEY = 'drew.rotation.session.v1'
@@ -51,6 +53,10 @@ function creditTime(session, elapsed) {
 }
 
 export function settleSession(session, now = Date.now()) {
+  if (session.halftime) {
+    const halftime = settleHalftime(session.halftime, now)
+    return halftime === session.halftime ? session : { ...session, halftime }
+  }
   if (session.status !== 'PLAYING') return session
   const elapsed = Math.min(session.clockMs, Math.max(0, now - session.lastTickAt))
   if (elapsed === 0 && session.clockMs > 0) return session
@@ -77,6 +83,7 @@ export function applyAction(session, action, now = Date.now()) {
       next.status = 'PAUSED'
       break
     case 'clock': {
+      if (next.halftime) throw new Error('End halftime before starting the game clock.')
       if (next.status === 'PLAYING') {
         next.status = 'PAUSED'
         next.lastTickAt = null
@@ -110,6 +117,7 @@ export function applyAction(session, action, now = Date.now()) {
       break
     }
     case 'adjust-clock': {
+      if (next.halftime) throw new Error('End halftime before changing the game clock.')
       const target = action.seconds === undefined ? next.clockMs + action.delta * 1000 : action.seconds * 1000
       if (!Number.isFinite(target)) throw new Error('Enter a valid time.')
       if (!Number.isSafeInteger(Math.round(target))) throw new Error('Enter a valid time.')
@@ -134,6 +142,29 @@ export function applyAction(session, action, now = Date.now()) {
       if (player.totalMs > 0) player.hasPlayed = true
       break
     }
+    case 'enter-halftime': {
+      if (next.period !== 1 || next.status === 'PLAYING') throw new Error('Pause the 1st-half clock before opening halftime.')
+      next.halftime = next.halftime || createHalftime()
+      break
+    }
+    case 'halftime-clock': {
+      if (!next.halftime || next.halftime.remainingMs === 0) throw new Error('Reset the halftime clock before starting it.')
+      const running = next.halftime.status === 'RUNNING'
+      next.halftime = { ...next.halftime, status: running ? 'PAUSED' : 'RUNNING', lastTickAt: running ? null : now }
+      break
+    }
+    case 'reset-halftime': {
+      if (!next.halftime) throw new Error('Open halftime first.')
+      next.halftime = createHalftime()
+      break
+    }
+    case 'sync-halftime': {
+      if (!next.halftime || !Number.isSafeInteger(action.seconds * 1000) || action.seconds < 0 || action.seconds * 1000 > HALFTIME_MS) throw new Error('Enter a halftime time between 00:00 and 15:00.')
+      const remainingMs = action.seconds * 1000
+      const status = remainingMs === 0 ? 'ENDED' : next.halftime.status === 'RUNNING' ? 'RUNNING' : 'PAUSED'
+      next.halftime = { remainingMs, status, lastTickAt: status === 'RUNNING' ? now : null }
+      break
+    }
     case 'next-period': {
       next.period += 1
       const seconds = next.period > 2 ? action.durationSeconds ?? 300 : 1200
@@ -141,6 +172,7 @@ export function applyAction(session, action, now = Date.now()) {
       next.clockMs = seconds * 1000
       next.status = 'PAUSED'
       next.lastTickAt = null
+      delete next.halftime
       next.players.forEach((candidate) => { candidate.stintMs = 0; candidate.restMs = 0 })
       break
     }
@@ -163,6 +195,10 @@ export function restoreSession(raw, roster, now = Date.now()) {
   }
   const next = createSession(roster)
   Object.assign(next, { period: saved.period, clockMs: saved.clockMs, status: saved.status, lastTickAt: saved.lastTickAt })
+  if (saved.period === 1 && saved.status !== 'PLAYING') {
+    const halftime = restoreHalftime(saved.halftime, now)
+    if (halftime) next.halftime = halftime
+  }
   next.players = next.players.map((player) => {
     const stored = saved.players.find((candidate) => candidate.id === player.id)
     if (!stored) return { ...player, isOnCourt: false }
