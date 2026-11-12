@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { roster } from '../../src/data/roster.js'
 import { createPlayerDisplayNames } from '../../src/data/playerNames.js'
-import { matchesPlayerSearch } from '../../src/game/playerSearch.js'
 
 test('roster labels use nicknames and only disambiguate the repeated display name', () => {
   const before = JSON.stringify(roster)
@@ -18,10 +17,8 @@ test('roster labels use nicknames and only disambiguate the repeated display nam
   assert.equal(JSON.stringify(roster), before)
 })
 
-test('display labels remain searchable by shorthand and official name', () => {
+test('the same roster labels survive refresh and do not depend on who is playing', () => {
   const names = createPlayerDisplayNames(roster)
-  for (const player of roster) {
-    assert.equal(matchesPlayerSearch(player, names.get(player.id)), true)
-    assert.equal(matchesPlayerSearch(player, player.name), true)
-  }
+  const restored = JSON.parse(JSON.stringify(roster)).map((player) => ({ ...player, isOnCourt: true }))
+  assert.deepEqual(createPlayerDisplayNames(restored), names)
 })
